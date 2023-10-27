@@ -29,6 +29,8 @@ jobs:
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/v') # works only version tagged
     needs: [build]
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v3
