@@ -6,6 +6,7 @@ name: .NET
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
 
@@ -57,5 +58,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./publish/win.zip
-        asset_name: BitwardenExtender-${{ env.RELEASE_TAG }}-win.zip
+        asset_name: BitwardenExtender-${{ github.ref.substring(10) }}-win.zip
         asset_content_type: application/zip
