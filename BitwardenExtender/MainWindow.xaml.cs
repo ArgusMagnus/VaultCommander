@@ -30,7 +30,6 @@ sealed partial class MainWindow : Window
     const string CommandPrefix = "bwext:";
     readonly JsonSerializerOptions _jsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     readonly WinForms.NotifyIcon _notifyIcon = new();
-    readonly DirectoryInfo _appData = new DirectoryInfo(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)).CreateSubdirectory(nameof(BitwardenExtender));
     readonly CliClient _cli;
     readonly IReadOnlyDictionary<string, IBwCommand> _commands;
     readonly MainVM _vm = new();
@@ -44,7 +43,7 @@ sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        _cli = new(Path.Combine(_appData.FullName, "bw.exe"));
+        _cli = new(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.CliDirectory, "bw.exe"));
         DataContext = _vm;
 
         InitializeComponent();
@@ -78,43 +77,42 @@ sealed partial class MainWindow : Window
 
         _vm.StatusBarText = "Auf Updates prüfen...";
 
+        var releaseTask = Utils.GetLatestRelease();
         var uriTask = _cli.GetUpdateUri();
+        if (await releaseTask is ReleaseInfo release && release.Version?.TrimStart('v') != _vm.Version)
+        {
+            _vm.StatusBarText = "Downloading update...";
+            _statusBarProgress.IsIndeterminate = false;
+            _statusBarProgress.Visibility = Visibility.Visible;
+            var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            try
+            {
+                await Utils.DownloadRelease(release, dir, value => _vm.StatusBarProgress = value);
+                using var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $"{nameof(Terminal)}.exe"),
+                    ArgumentList = { nameof(Terminal.Verbs.Install), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" }
+                });
+                OnMenuExitClicked(null, null);
+                return;
+            }
+            catch (Exception)
+            {
+                Directory.Delete(dir, true);
+                throw;
+            }
+        }
+
         _cli.TryAttachToApiServer();
-        var uri = await uriTask;
-        if (uri is not null)
+        if (await uriTask is Uri uri)
         {
             _vm.StatusBarText = "Downloading Bitwarden CLI...";
             _statusBarProgress.IsIndeterminate = false;
-            _statusBarProgress.Value = 0;
             _statusBarProgress.Visibility = Visibility.Visible;
-
-            byte[] buffer;
-            using (var httpClient = new HttpClient())
-            using (var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead))
-            {
-                response.EnsureSuccessStatusCode();
-                var contentLength = response.Content.Headers.ContentLength ?? throw new ArgumentNullException();
-                _statusBarProgress.Minimum = 0;
-                _statusBarProgress.Maximum = contentLength;
-                buffer = new byte[contentLength];
-                var memory = new Memory<byte>(buffer);
-                int bytesRead;
-                using var stream = await response.Content.ReadAsStreamAsync();
-                while ((bytesRead = await stream.ReadAsync(memory.Slice(0, Math.Min(memory.Length, 1024)))) > 0)
-                {
-                    memory = memory.Slice(bytesRead);
-                    _statusBarProgress.Value += bytesRead;
-                }
-            }
-
-            using var memoryStream = new MemoryStream(buffer, false);
-            using var archive = new ZipArchive(memoryStream, ZipArchiveMode.Read);
-            var entry = archive.Entries.First(x => string.Equals(".exe", Path.GetExtension(x.Name), StringComparison.OrdinalIgnoreCase));
-            using var entryStream = entry.Open();
             _cli.KillServer();
-            using var fileStream = File.Open(_cli.ExePath, FileMode.Create, FileAccess.Write);
-            await entryStream.CopyToAsync(fileStream);
-
+            await Utils.DownloadAndExpandZipArchive(uri,
+                name => string.Equals(".exe", Path.GetExtension(name), StringComparison.OrdinalIgnoreCase) ? _cli.ExePath : null,
+                progress => _vm.StatusBarProgress = progress);
             _statusBarProgress.Visibility = Visibility.Collapsed;
         }
 
@@ -519,8 +517,6 @@ sealed partial class MainWindow : Window
 
     private async void OnMenuSyncClicked(object sender, RoutedEventArgs e) => await UseApi(api => api.Sync());
 
-    ProgressBarScope ShowProgressBar() => new(this);
-
     private void OnMenuToolsShowWindowInformationClicked(object sender, RoutedEventArgs e)
     {
         if (_currentWindowInfoWindow is null)
@@ -530,6 +526,8 @@ sealed partial class MainWindow : Window
             _currentWindowInfoWindow.Show();
         }
     }
+
+    ProgressBarScope ShowProgressBar() => new(this);
 
     readonly struct ProgressBarScope : IDisposable
     {

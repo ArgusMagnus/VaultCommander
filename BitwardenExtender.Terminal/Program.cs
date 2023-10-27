@@ -6,24 +6,82 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-switch (args[0])
+try
 {
-    default: throw new ArgumentException($"Invalid verb: {args[0]}");
+    switch (args[0])
+    {
+        default: throw new ArgumentException($"Invalid verb: {args[0]}");
 
-    case nameof(Verbs.Execute):
-        var assembly = args[0];
-        var typeName = args[1];
-        var argsPath = args[2];
-        if (args.Length > 3 && string.Equals(args[3], "/d", StringComparison.OrdinalIgnoreCase))
-            Debugger.Launch();
+        case nameof(Verbs.Execute):
+            {
+                var assembly = args[0];
+                var typeName = args[1];
+                var argsPath = args[2];
+                if (args.Length > 3 && string.Equals(args[3], "/d", StringComparison.OrdinalIgnoreCase))
+                    Debugger.Launch();
 
-        var buffer = await File.ReadAllBytesAsync(argsPath);
-        File.Delete(argsPath);
+                var buffer = await File.ReadAllBytesAsync(argsPath);
+                File.Delete(argsPath);
 
-        var type = Assembly.LoadFrom(assembly).GetType(typeName) ?? throw new InvalidOperationException($"Type '{typeName}' not found.");
-        var command = (IBwCommand)Activator.CreateInstance(type)!;
-        var commandArgs = JsonSerializer.Deserialize(Encoding.UTF8.GetString(ProtectedData.Unprotect(buffer, null, DataProtectionScope.CurrentUser)), command.ArgumentsType) ?? throw new FormatException();
-        IBwCommand.IsInTerminal = true;
-        await command.Execute(commandArgs);
-        break;
+                var type = Assembly.LoadFrom(assembly).GetType(typeName) ?? throw new InvalidOperationException($"Type '{typeName}' not found.");
+                var command = (IBwCommand)Activator.CreateInstance(type)!;
+                var commandArgs = JsonSerializer.Deserialize(Encoding.UTF8.GetString(ProtectedData.Unprotect(buffer, null, DataProtectionScope.CurrentUser)), command.ArgumentsType) ?? throw new FormatException();
+                IBwCommand.IsInTerminal = true;
+                await command.Execute(commandArgs);
+                break;
+            }
+
+        case nameof(Verbs.Install):
+            {
+                var dest = args.ElementAtOrDefault(1) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), nameof(BitwardenExtender));
+                if (int.TryParse(args.ElementAtOrDefault(2), out var processId))
+                {
+                    try { await Process.GetProcessById(processId).WaitForExitAsync(); }
+                    catch { }
+                }
+                using (var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "robocopy.exe",
+                    ArgumentList = { AppDomain.CurrentDomain.BaseDirectory, dest, "/MIR", "/XD", Constants.CliDirectory },
+                    CreateNoWindow = true
+                })!)
+                {
+                    await process.WaitForExitAsync();
+                    if (process is { ExitCode: >= 8})
+                        throw new Exception("Installation failed");
+                }
+                using (var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = Path.Combine(dest, Path.GetFileName(Environment.ProcessPath)!),
+                    ArgumentList = { nameof(Verbs.CleanUpdateCache), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" },
+                    CreateNoWindow = true
+                })) { }
+                break;
+            }
+
+        case nameof(Verbs.CleanUpdateCache):
+            {
+                var dir = args[1];
+                var processId = int.Parse(args[2]);
+                try { await Process.GetProcessById(processId).WaitForExitAsync(); }
+                catch { }
+
+                await Task.WhenAll(Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                    .Select(async x => { await Task.Yield(); File.Delete(x); }));
+                Directory.Delete(dir, true);
+                using var process = Process.Start(Environment.ProcessPath!.Replace($".{nameof(BitwardenExtender.Terminal)}.", "."));
+
+                break;
+            }
+
+    }
+}
+catch(Exception ex)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine(ex);
+    Console.WriteLine("Press <Enter> to exit.");
+    Console.ResetColor();
+    Console.ReadLine();
+    throw;
 }

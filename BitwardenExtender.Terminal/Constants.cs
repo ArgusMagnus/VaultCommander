@@ -6,9 +6,7 @@ using System.Threading.Tasks;
 
 namespace BitwardenExtender.Terminal;
 
-public enum Verbs
+public static class Constants
 {
-    Execute,
-    Install,
-    CleanUpdateCache
+    public const string CliDirectory = "cli";
 }
