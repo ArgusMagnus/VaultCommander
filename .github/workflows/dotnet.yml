@@ -38,6 +38,8 @@ jobs:
         dotnet-version: 7.0.x
     - name: Build
       run: |
+        $version = '${{ github.ref }}'.Substring(10)
+        Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$version" -Encoding UTF8
         dotnet publish -c Release -o ./publish/win
         Compress-Archive -Path ./publish/win/* -DestinationPath ./publish/win.zip -CompressionLevel Optimal
     - name: Create Release
@@ -58,5 +60,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./publish/win.zip
-        asset_name: BitwardenExtender-${{ github.ref.substring(10) }}-win.zip
+        asset_name: BitwardenExtender-${{ env.RELEASE_TAG }}-win.zip
         asset_content_type: application/zip
