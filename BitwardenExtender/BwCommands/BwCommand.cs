@@ -33,7 +33,7 @@ abstract class BwCommand<T> : IBwCommand
             {
                 FileName = Path.ChangeExtension(typeof(IBwCommand).Assembly.Location, ".exe"),
                 UseShellExecute = false,
-                ArgumentList = { typeof(BwCommand<T>).Assembly.Location, GetType().FullName!, tmpFile.FullName }
+                ArgumentList = { nameof(Terminal.Verbs.Execute), typeof(BwCommand<T>).Assembly.Location, GetType().FullName!, tmpFile.FullName }
             };
             if (Debugger.IsAttached)
                 startInfo.ArgumentList.Add("/d");
