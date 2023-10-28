@@ -77,9 +77,8 @@ sealed partial class MainWindow : Window
 
         _vm.StatusBarText = "Auf Updates prüfen...";
 
-        var releaseTask = Utils.GetLatestRelease();
         var uriTask = _cli.GetUpdateUri();
-        if (await releaseTask is ReleaseInfo release && release.Version?.TrimStart('v') != _vm.Version)
+        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-')[0], out var currentVersion) && releaseVersion > currentVersion)
         {
             _vm.StatusBarText = "Downloading update...";
             _statusBarProgress.IsIndeterminate = false;
@@ -88,11 +87,14 @@ sealed partial class MainWindow : Window
             try
             {
                 await Utils.DownloadRelease(release, dir, value => _vm.StatusBarProgress = value);
-                using var process = Process.Start(new ProcessStartInfo
+                var startInfo = new ProcessStartInfo
                 {
-                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $"{nameof(Terminal)}.exe"),
+                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $".{nameof(Terminal)}.exe"),
                     ArgumentList = { nameof(Terminal.Verbs.Install), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" }
-                });
+                };
+                if (Debugger.IsAttached)
+                    startInfo.ArgumentList.Add("/d");
+                using (var process = Process.Start(startInfo)) { }
                 OnMenuExitClicked(null, null);
                 return;
             }

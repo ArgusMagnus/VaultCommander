@@ -8,6 +8,9 @@ using System.Text.Json;
 
 try
 {
+    if (string.Equals(args.LastOrDefault(), "/d", StringComparison.OrdinalIgnoreCase))
+        Debugger.Launch();
+
     switch (args[0])
     {
         default: throw new ArgumentException($"Invalid verb: {args[0]}");
@@ -17,8 +20,6 @@ try
                 var assembly = args[0];
                 var typeName = args[1];
                 var argsPath = args[2];
-                if (args.Length > 3 && string.Equals(args[3], "/d", StringComparison.OrdinalIgnoreCase))
-                    Debugger.Launch();
 
                 var buffer = await File.ReadAllBytesAsync(argsPath);
                 File.Delete(argsPath);
@@ -50,12 +51,15 @@ try
                     if (process is { ExitCode: >= 8})
                         throw new Exception("Installation failed");
                 }
-                using (var process = Process.Start(new ProcessStartInfo
+                var startInfo = new ProcessStartInfo
                 {
                     FileName = Path.Combine(dest, Path.GetFileName(Environment.ProcessPath)!),
                     ArgumentList = { nameof(Verbs.CleanUpdateCache), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" },
                     CreateNoWindow = true
-                })) { }
+                };
+                if (Debugger.IsAttached)
+                    startInfo.ArgumentList.Add("/d");
+                using (var process = Process.Start(startInfo)) { }
                 break;
             }
 

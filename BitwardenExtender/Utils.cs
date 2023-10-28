@@ -135,7 +135,7 @@ static class Utils
             while ((bytesRead = await stream.ReadAsync(memory.Slice(0, Math.Min(memory.Length, 1024)))) > 0)
             {
                 memory = memory.Slice(bytesRead);
-                progress?.Invoke((contentLength - memory.Length) / (double)contentLength);
+                progress?.Invoke((contentLength - memory.Length) / (double)contentLength / 2);
             }
         }
 
@@ -155,7 +155,7 @@ static class Utils
                         await source.CopyToAsync(dest);
                 }
                 done += entry.Length;
-                progress?.Invoke(done / total);
+                progress?.Invoke(done / total / 2 + 0.5);
             }
         }
     }
