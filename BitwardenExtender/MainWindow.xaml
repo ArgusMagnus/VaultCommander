@@ -44,7 +44,7 @@
         <StatusBar Grid.Row="2" x:Name="_statusBar">
             <StatusBarItem Content="{Binding StatusBarText}"/>
             <StatusBarItem>
-                <ProgressBar x:Name="_statusBarProgress" Width="100" Height="20" Visibility="Collapsed" />
+                <ProgressBar x:Name="_statusBarProgress" Width="100" Height="20" Visibility="Collapsed" Minimum="0" Maximum="1" Value="{Binding StatusBarProgress}" />
             </StatusBarItem>
             <Separator/>
             <StatusBarItem Content="{Binding Status.UserEmail}"/>

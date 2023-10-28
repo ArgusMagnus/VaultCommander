@@ -17,6 +17,9 @@ sealed class MainVM : NotifyPropertyChanged
     string _statusBarText = string.Empty;
     public string StatusBarText { get => _statusBarText; set => SetProperty(ref _statusBarText, value); }
 
+    double _statusBarProgress;
+    public double StatusBarProgress { get => _statusBarProgress; set => SetProperty(ref _statusBarProgress, value); }
+
     StatusDto? _status;
     public StatusDto? Status { get => _status; set => SetProperty(ref _status, value, (_,_) => RaisePropertyChanged(nameof(IsLoggedIn))); }
 
@@ -26,7 +29,7 @@ sealed class MainVM : NotifyPropertyChanged
     public bool IsLoggedIn => Status is not null && Status.Status is not BitwardenExtender.Status.Unauthenticated;
 
     public string Version { get; } = typeof(MainVM).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
-
+    
     const string RegKeyAutostart = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
     public MainVM()
