@@ -43,8 +43,7 @@ try
                 using (var process = Process.Start(new ProcessStartInfo
                 {
                     FileName = "robocopy.exe",
-                    ArgumentList = { AppDomain.CurrentDomain.BaseDirectory, dest, "/MIR", "/XD", Constants.CliDirectory },
-                    CreateNoWindow = true
+                    ArgumentList = { AppDomain.CurrentDomain.BaseDirectory, dest, "/MIR", "/XD", Constants.CliDirectory }
                 })!)
                 {
                     await process.WaitForExitAsync();
@@ -55,7 +54,6 @@ try
                 {
                     FileName = Path.Combine(dest, Path.GetFileName(Environment.ProcessPath)!),
                     ArgumentList = { nameof(Verbs.CleanUpdateCache), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" },
-                    CreateNoWindow = true
                 };
                 if (Debugger.IsAttached)
                     startInfo.ArgumentList.Add("/d");
