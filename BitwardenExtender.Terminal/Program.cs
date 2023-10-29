@@ -75,8 +75,10 @@ try
                 var exe = Environment.ProcessPath!.Replace($".{nameof(BitwardenExtender.Terminal)}.", ".");
                 var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), $@"Microsoft\Windows\Start Menu\Programs\${nameof(BitwardenExtender)}.lnk");
                 Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)!);
-                var shell = new IWshRuntimeLibrary.WshShell();
-                var shortcut = (IWshRuntimeLibrary.IWshShortcut)shell.CreateShortcut(shortcutPath);
+                //var shell = new IWshRuntimeLibrary.WshShell();
+                //var shortcut = (IWshRuntimeLibrary.IWshShortcut)shell.CreateShortcut(shortcutPath);
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromCLSID(Guid.Parse("41904400-BE18-11D3-A28B-00104BD35090"))!)!;
+                dynamic shortcut = shell.CreateShortcut(shortcutPath);
                 shortcut.TargetPath = exe;
                 shortcut.Save();
 
