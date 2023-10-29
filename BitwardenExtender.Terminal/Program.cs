@@ -73,7 +73,7 @@ try
                 Directory.Delete(dir, true);
 
                 var exe = Environment.ProcessPath!.Replace($".{nameof(BitwardenExtender.Terminal)}.", ".");
-                var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), $@"Microsoft\Windows\Start Menu\Programs\${nameof(BitwardenExtender)}.lnk");
+                var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), $@"Microsoft\Windows\Start Menu\Programs\{nameof(BitwardenExtender)}.lnk");
                 Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)!);
                 //var shell = new IWshRuntimeLibrary.WshShell();
                 //var shortcut = (IWshRuntimeLibrary.IWshShortcut)shell.CreateShortcut(shortcutPath);
