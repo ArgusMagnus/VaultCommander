@@ -77,7 +77,7 @@ try
                 Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)!);
                 //var shell = new IWshRuntimeLibrary.WshShell();
                 //var shortcut = (IWshRuntimeLibrary.IWshShortcut)shell.CreateShortcut(shortcutPath);
-                dynamic shell = Activator.CreateInstance(Type.GetTypeFromCLSID(Guid.Parse("41904400-BE18-11D3-A28B-00104BD35090"))!)!;
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromCLSID(Guid.Parse("72C24DD5-D70A-438B-8A42-98424B88AFB8"))!)!;
                 dynamic shortcut = shell.CreateShortcut(shortcutPath);
                 shortcut.TargetPath = exe;
                 shortcut.Save();
