@@ -48,7 +48,7 @@ sealed partial class MainWindow : Window
 
         InitializeComponent();
         _notifyIcon.Text = Title;
-        _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+        _notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
         _notifyIcon.MouseClick += OnNotifyIconClicked;
 
         var item = new WinForms.ToolStripMenuItem { Text = "Beenden" };
