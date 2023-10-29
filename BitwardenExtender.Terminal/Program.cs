@@ -17,9 +17,9 @@ try
 
         case nameof(Verbs.Execute):
             {
-                var assembly = args[0];
-                var typeName = args[1];
-                var argsPath = args[2];
+                var assembly = args[1];
+                var typeName = args[2];
+                var argsPath = args[3];
 
                 var buffer = await File.ReadAllBytesAsync(argsPath);
                 File.Delete(argsPath);

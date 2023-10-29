@@ -143,7 +143,6 @@ static class Utils
         {
             double total = progress is null ? 0 : archive.Entries.Sum(x => x.Length);
             long done = 0;
-            progress?.Invoke(0);
             foreach (var entry in archive.Entries)
             {
                 var destPath = getDestination(entry.FullName);
