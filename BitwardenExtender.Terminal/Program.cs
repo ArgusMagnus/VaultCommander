@@ -71,8 +71,16 @@ try
                 await Task.WhenAll(Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
                     .Select(async x => { await Task.Yield(); File.Delete(x); }));
                 Directory.Delete(dir, true);
-                using var process = Process.Start(Environment.ProcessPath!.Replace($".{nameof(BitwardenExtender.Terminal)}.", "."));
 
+                var exe = Environment.ProcessPath!.Replace($".{nameof(BitwardenExtender.Terminal)}.", ".");
+                var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), $@"Microsoft\Windows\Start Menu\Programs\${nameof(BitwardenExtender)}.lnk");
+                Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)!);
+                var shell = new IWshRuntimeLibrary.WshShell();
+                var shortcut = (IWshRuntimeLibrary.IWshShortcut)shell.CreateShortcut(shortcutPath);
+                shortcut.TargetPath = exe;
+                shortcut.Save();
+
+                using var process = Process.Start(exe);
                 break;
             }
 
