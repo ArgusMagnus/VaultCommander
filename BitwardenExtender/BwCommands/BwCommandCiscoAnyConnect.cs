@@ -92,6 +92,8 @@ sealed class BwCommandCiscoAnyConnect : BwCommand<BwCommandCiscoAnyConnect.Argum
                     {
                         case "accept? [y/n]:":
                         case "Connect Anyway? [y/n]:":
+                        case "Change the setting that blocks untrusted connections? [y/n]:":
+                        case "Always trust this server and import the certificate? [y/n]:":
                             await process.StandardInput.WriteLineAsync("y"); break;
                         case "Group:":
                             if (group is -1)
