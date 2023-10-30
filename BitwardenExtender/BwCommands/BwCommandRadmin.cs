@@ -29,40 +29,45 @@ sealed class BwCommandRadmin : BwCommand<BwCommandRadmin.Arguments>
     public override async Task Execute(Arguments args)
     {
         await Task.Delay(0).ConfigureAwait(false);
+
+        var host = args.Host?.Trim() ?? string.Empty;
+        var gateway = args.Gateway?.Host?.Trim() ?? string.Empty;
         var startInfo = new ProcessStartInfo
         {
             FileName = _exe,
             WorkingDirectory = Path.GetDirectoryName(_exe),
-            ArgumentList = { $"/connect:{args.Host?.Trim()}" }
+            ArgumentList = { $"/connect:{host}" }
         };
         if (args.Gateway is not null)
-            startInfo.ArgumentList.Add($"/through:{args.Gateway.Host?.Trim()}");
+            startInfo.ArgumentList.Add($"/through:{gateway}");
 
-        switch(QueryBox.Show("Radmin Verbindungsart?", nameof(BitwardenExtender), "Vollsteuerung", "Nur Ansicht", "Dateiübertragung", "Terminal"))
+        switch (QueryBox.Show("Radmin Verbindungsart?", nameof(BitwardenExtender), "Vollsteuerung", "Nur Ansicht", "Dateiübertragung", "Terminal"))
         {
             case 0: break;
-            case 1: startInfo.ArgumentList.Add("/noinput");break;
-            case 2: startInfo.ArgumentList.Add("/file");break;
+            case 1: startInfo.ArgumentList.Add("/noinput"); break;
+            case 2: startInfo.ArgumentList.Add("/file"); break;
             case 3: startInfo.ArgumentList.Add("/telnet"); break;
             default: return;
-        }        
+        }
 
         using var process = Process.Start(startInfo)!;
+
+        var pattern = args.Gateway is null ? $@"^(?:Windows|Radmin)(?: security|-Sicherheit):\s*(?<Host>{Regex.Escape(host)})\s*$" : $@"^(?:Windows|Radmin)(?: security|-Sicherheit):\s*(?:(?<Host>{Regex.Escape(host)})|(?<GW>{Regex.Escape(gateway)}))\s*$";
+        bool gatewaySent = false;
 
         while (!process.HasExited && process.MainWindowHandle is 0)
         {
             WindowHandle window;
             Match? match = null;
-            if (WindowHandle.FindWindow(x => x.TryGetThreadAndProcessId(out _, out var pid) && pid == process.Id && (match = Regex.Match(x.Text ?? string.Empty, @"^Windows security:\s+(?<Host>.+)\s*$")).Success, out window))
+            if (WindowHandle.FindWindow(x => x.TryGetThreadAndProcessId(out _, out var pid) && pid == process.Id && (match = Regex.Match(x.Text ?? string.Empty, pattern)).Success, out window))
             {
-                WindowHandle tmp = new(process.MainWindowHandle);
-                var host = match!.Groups["Host"].Value;
-                if (args.Gateway is not null && string.Equals(host, args.Gateway?.Host))
+                if (!gatewaySent && match!.Groups["GW"].Success)
                 {
                     window.Focus();
-                    WinForms.SendKeys.SendWait($"{args.Gateway.Username}{{TAB}}{args.Gateway.Password}{{TAB}}{{ENTER}}");
+                    WinForms.SendKeys.SendWait($"{args.Gateway!.Username}{{TAB}}{args.Gateway.Password}{{TAB}}{{ENTER}}");
+                    gatewaySent = true;
                 }
-                else if (string.Equals(host, args.Host))
+                else if (match!.Groups["Host"].Success)
                 {
                     window.Focus();
                     WinForms.SendKeys.SendWait($"{args.Username}{{TAB}}{args.Password}{{TAB}}{{ENTER}}");
