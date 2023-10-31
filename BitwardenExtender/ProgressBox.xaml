@@ -9,7 +9,7 @@
     <StackPanel Orientation="Vertical" Margin="10">
         <TextBlock Text="{Binding DetailText}"/>
         <ProgressBar Height="20" Minimum="0" Maximum="1" Value="{Binding DetailProgress}" IsIndeterminate="{Binding DetailProgressIsIndeterminate}" />
-        <TextBlock Text="{Binding StepText}"/>
-        <ProgressBar Height="20" Minimum="0" Maximum="1" Value="{Binding StepProgress}" IsIndeterminate="{Binding StepProgressIsIndeterminate}" />
+        <TextBlock Text="{Binding StepText}" Visibility="{Binding StepVisibility}"/>
+        <ProgressBar Height="20" Minimum="0" Maximum="1" Value="{Binding StepProgress}" IsIndeterminate="{Binding StepProgressIsIndeterminate}" Visibility="{Binding StepVisibility}" />
     </StackPanel>
 </Window>

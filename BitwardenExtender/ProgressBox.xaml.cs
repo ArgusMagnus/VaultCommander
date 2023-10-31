@@ -51,10 +51,11 @@ sealed partial class ProgressBox : Window
         public bool DetailProgressIsIndeterminate => double.IsNaN(DetailProgress);
 
         string? _stepText;
-        public string? StepText { get => _stepText; set => SetProperty(ref _stepText, value); }
+        public string? StepText { get => _stepText; set => SetProperty(ref _stepText, value, (_,_) => RaisePropertyChanged(nameof(StepVisibility))); }
         double _stepProgress;
         public double StepProgress { get => _stepProgress; set => SetProperty(ref _stepProgress, value, (a, b) => { if (double.IsNaN(a) != double.IsNaN(b)) RaisePropertyChanged(nameof(StepProgressIsIndeterminate)); }); }
         public bool StepProgressIsIndeterminate => double.IsNaN(StepProgress);
+        public Visibility StepVisibility => string.IsNullOrEmpty(StepText) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     public static new Task<IViewModel> Show()

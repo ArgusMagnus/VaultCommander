@@ -27,8 +27,6 @@ namespace BitwardenExtender;
 /// </summary>
 sealed partial class MainWindow : Window
 {
-    const string CommandFieldName = nameof(BitwardenExtender);
-    const string CommandPrefix = "bwext:";
     readonly JsonSerializerOptions _jsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     readonly WinForms.NotifyIcon _notifyIcon = new();
     readonly IReadOnlyDictionary<string, IBwCommand> _commands;
@@ -37,9 +35,8 @@ sealed partial class MainWindow : Window
     int _progressBarScope = 0;
     CurrentWindowInformationWindow? _currentWindowInfoWindow;
 
-    CliClient _cli;
-
     readonly IReadOnlyList<IVault> _vaults = IVaultFactory.CreateVaults(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory));
+    readonly IReadOnlyDictionary<string, IVault> _vaultsByUriScheme;
 
 #if SAVE_PW
     EncryptedString? _pw;
@@ -47,8 +44,8 @@ sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        _cli = new(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory, "bw.exe"));
         DataContext = _vm;
+        _vaultsByUriScheme = _vaults.ToDictionary(x => x.UriScheme, StringComparer.OrdinalIgnoreCase);
 
         InitializeComponent();
         _notifyIcon.Text = Title;
@@ -103,101 +100,19 @@ sealed partial class MainWindow : Window
             var status = await vault.Initialize();
             if (status is not null && status.Status is not Status.Unauthenticated)
                 InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
-            else
+
+            var menuItemLogin = new MenuItem { Header = $"{vault.VaultName}..." };
+            menuItemLogin.Click += async (_, _) =>
             {
-                var menuItemLogin = new MenuItem { Header = $"{vault.VaultName}..." };
-                menuItemLogin.Click += async (_, _) =>
+                var status = await vault.Login();
+                if (status is not null && status.Status is not Status.Unauthenticated)
                 {
-                    var status = await vault.Login();
-                    if (status is not null && status.Status is not Status.Unauthenticated)
-                    {
-                        InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
-                        //menuItemLogin.IsEnabled = false;
-                    }
-                };
-                _menuItemLogin.Items.Add(menuItemLogin);
-            }
+                    InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
+                    //menuItemLogin.IsEnabled = false;
+                }
+            };
+            _menuItemLogin.Items.Add(menuItemLogin);
         }
-
-        if (!Directory.Exists(_cli.AppDataDir))
-        {
-            MessageBox.Show(this, "Bitwarden Desktop Client ist nicht installiert.", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Error);
-            OnMenuExitClicked(null, null);
-            return;
-        }
-
-//        _vm.StatusBarText = "Auf Updates prüfen...";
-
-//        var uriTask = _cli.GetUpdateUri();
-//        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-')[0], out var currentVersion) && releaseVersion > currentVersion)
-//        {
-//            _vm.StatusBarText = "Downloading update...";
-//            _statusBarProgress.IsIndeterminate = false;
-//            _statusBarProgress.Visibility = Visibility.Visible;
-//            var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-//            try
-//            {
-//                await Utils.DownloadRelease(release, dir, value => _vm.StatusBarProgress = value);
-//                var startInfo = new ProcessStartInfo
-//                {
-//                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $".{nameof(Terminal)}.exe"),
-//                    ArgumentList = { nameof(Terminal.Verbs.Install), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" }
-//                };
-//                if (Debugger.IsAttached)
-//                    startInfo.ArgumentList.Add("/d");
-//                using (var process = Process.Start(startInfo)) { }
-//                OnMenuExitClicked(null, null);
-//                return;
-//            }
-//            catch (Exception)
-//            {
-//                Directory.Delete(dir, true);
-//                throw;
-//            }
-//        }
-
-//        _cli.TryAttachToApiServer();
-//        if (await uriTask is Uri uri)
-//        {
-//            _vm.StatusBarText = "Downloading Bitwarden CLI...";
-//            _statusBarProgress.IsIndeterminate = false;
-//            _statusBarProgress.Visibility = Visibility.Visible;
-//            _cli.KillServer();
-//            await Utils.DownloadAndExpandZipArchive(uri,
-//                name => string.Equals(".exe", Path.GetExtension(name), StringComparison.OrdinalIgnoreCase) ? _cli.ExePath : null,
-//                progress => _vm.StatusBarProgress = progress);
-//            _statusBarProgress.Visibility = Visibility.Collapsed;
-//        }
-
-//        if (!await _cli.StartApiServer(null))
-//        {
-//            _vm.StatusBarText = "Anmelden...";
-//#if SAVE_PW
-//            _pw = null;
-//#endif
-//            while (true)
-//            {
-//                var cred = PasswordDialog.Show(this, null);
-//                if (cred == default)
-//                {
-//                    OnMenuExitClicked(null, null);
-//                    break;
-//                }
-//                if (string.IsNullOrEmpty(cred.UserEmail) || cred.Password is null)
-//                    continue;
-//                var sessionToken = await _cli.Login(cred.UserEmail, cred.Password);
-//                if (string.IsNullOrEmpty(sessionToken))
-//                    continue;
-//#if SAVE_PW
-//                _pw = cred.Password;
-//#endif
-//                await _cli.StartApiServer(sessionToken);
-//                break;
-//            }
-//        }
-
-//        _vm.StatusBarText = "Fertig";
-//        _vm.Status = await (await _cli.GetApiClient()).GetStatus() ?? await _cli.GetStatus();
     }
 
     private void OnNotifyIconClicked(object? sender, WinForms.MouseEventArgs e)
@@ -231,9 +146,13 @@ sealed partial class MainWindow : Window
         base.OnClosed(e);
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
-        if (_vm.Status?.Status is Status.Unlocked)
-            await (await _cli.GetApiClient()).Lock();
-        _cli.Dispose();
+        foreach (var vault in _vaults)
+        {
+            if (vault is IAsyncDisposable asyncDisposable)
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            else if (vault is IDisposable disposable)
+                disposable.Dispose();
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -264,10 +183,11 @@ sealed partial class MainWindow : Window
         if (msg is WM_CLIPBOARDUPDATE)
         {
             var text = Clipboard.GetText();
-            if (text.StartsWith(CommandPrefix, StringComparison.OrdinalIgnoreCase))
+            var parts = Clipboard.GetText().Split(':', 2);
+            if (_vaultsByUriScheme.TryGetValue(parts[0], out var vault))
             {
                 Clipboard.Clear();
-                OnClipboardCommand(text.Substring(CommandPrefix.Length));
+                OnClipboardCommand(vault, parts.ElementAtOrDefault(1));
                 handled = true;
             }
         }
@@ -275,46 +195,7 @@ sealed partial class MainWindow : Window
         return nint.Zero;
     }
 
-    async Task<T> UseApi<T>(Func<ApiClient, Task<T>> func)
-    {
-        using var scope = ShowProgressBar();
-        var api = await _cli.GetApiClient();
-        T result;
-        try
-        {
-            if ((await api.GetStatus())?.Status is Status.Locked)
-            {
-                EncryptedString? pw = null;
-#if SAVE_PW
-                pw = _pw;
-                _pw = null;
-#endif
-                while (pw is null || !await api.Unlock(pw))
-                {
-                    Show();
-                    Activate();
-                    pw = PasswordDialog.Show(this, _vm.Status?.UserEmail).Password;
-                }
-#if SAVE_PW
-                _pw = pw;
-#endif
-            }
-            result = await func(api);
-        }
-        finally
-        {
-#if SAVE_PW
-            if (!Debugger.IsAttached)
-                await api.Lock();
-#endif
-        }
-        _vm.Status = await api.GetStatus();
-        return result;
-    }
-
-    Task UseApi(Func<ApiClient, Task> func) => UseApi(async api => { await func(api); return true; });
-
-    private async void OnClipboardCommand(string strGuid)
+    private async void OnClipboardCommand(IVault vault, string? strGuid)
     {
         foreach (Button button in _buttons.Children)
             button.Click -= OnBwCommandClicked;
@@ -334,6 +215,14 @@ sealed partial class MainWindow : Window
         Show();
         Activate();
 
+        var status = await vault.GetStatus();
+        if (status is null || status.Status is Status.Unauthenticated)
+        {
+            status = await vault.Login();
+            if (status is null || status.Status is Status.Unauthenticated)
+                return;
+        }
+
         if (!Guid.TryParse(strGuid, out var guid))
         {
             MessageBox.Show(this, $"'{strGuid}' ist keine gültige GUID.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -341,16 +230,11 @@ sealed partial class MainWindow : Window
         }
 
         ItemTemplate? item = null;
-        try
-        {
-            var response = await UseApi(api => api.GetItem(guid));
-            if (response?.Success is true)
-                item = response.Data;
-        }
+        try { item = await vault.GetItem(guid); }
         catch { }
 
         if (item?.Id != guid)
-            item = await UpdateGuids(guid);
+            item = await vault.UpdateUris(guid);
 
         if (item is null)
         {
@@ -364,66 +248,13 @@ sealed partial class MainWindow : Window
             var parts = field.Value!.Split(':', 2);
             if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
                 continue;
-            var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(item.Id, bwCommand, parts[1]) };
+            var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, item.Id, bwCommand, parts[1]) };
             button.Click += OnBwCommandClicked;
             _buttons.Children.Add(button);
         }
     }
 
-    private async Task<ItemTemplate?> UpdateGuids(Guid? guid)
-    {
-        var (item, count) = await UseApi(async api =>
-        {
-            await api.Sync();
-            ItemTemplate? item = null;
-            var count = 0;
-            var itemsDto = await api.GetItems();
-            if (itemsDto?.Success is not true || itemsDto.Data?.Data is null)
-                return (item, count);
-
-            foreach (var data in itemsDto.Data.Data)
-            {
-                var element = data.Fields.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.Name == CommandFieldName);
-                if (data.Login is not null)
-                {
-                    if (element != default)
-                        data.Fields.RemoveAt(element.i);
-                    var uri = data.Login.Uris.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.Uri?.StartsWith(CommandPrefix, StringComparison.OrdinalIgnoreCase) is true);
-                    if (Guid.TryParse(uri.x?.Uri?.Substring(CommandPrefix.Length), out var tmp) && tmp == data.Id)
-                        continue;
-                    var newUri = new ItemUri { Uri = $"{CommandPrefix}{data.Id}", Match = UriMatchType.Never };
-                    if (uri == default)
-                        data.Login.Uris.Add(newUri);
-                    else
-                        data.Login.Uris[uri.i] = newUri;
-                }
-                else
-                {
-                    if (element.x?.Value?.StartsWith(CommandPrefix, StringComparison.OrdinalIgnoreCase) is true && Guid.TryParse(element.x.Value.Substring(CommandPrefix.Length), out var tmp) && tmp == data.Id)
-                        continue;
-                    var newField = new Field { Name = CommandFieldName, Value = $"{CommandPrefix}{data.Id}", Type = FieldType.Text };
-                    if (element == default)
-                        data.Fields.Insert(0, newField);
-                    else
-                        data.Fields[element.i] = newField;
-                }
-
-                await api.PutItem(data);
-                if (data.Id == guid)
-                    item = data;
-                count++;
-            }
-
-            return (item, count);
-        });
-
-        _vm.StatusBarText = $"{count} Einträge aktualisiert";
-        return item;
-    }
-
-    private async void OnMenuUpdateGuidsClicked(object sender, RoutedEventArgs e) => await UpdateGuids(null);
-
-    sealed record ButtonTag(Guid ItemId, IBwCommand Command, string Arguments);
+    sealed record ButtonTag(IVault Vault, Guid ItemId, IBwCommand Command, string Arguments);
 
     private async void OnBwCommandClicked(object sender, RoutedEventArgs e)
     {
@@ -449,40 +280,36 @@ sealed partial class MainWindow : Window
                 }
             }
 
-            await UseApi(async api =>
+            Dictionary<Guid, ItemTemplate?> items = new();
+            const string Pattern = @"\{(?<N>\w+)(?:@(?<R>(?>(?>(?<c>\{)?[\w@\-]*)+(?>(?<-c>\})?)+)+))?\}";
+
+            string EvaluateMatch(Match match)
             {
-                await Task.Delay(0).ConfigureAwait(false);
-                Dictionary<Guid, ItemTemplate?> items = new();
-                const string Pattern = @"\{(?<N>\w+)(?:@(?<R>(?>(?>(?<c>\{)?[\w@\-]*)+(?>(?<-c>\})?)+)+))?\}";
-
-                string EvaluateMatch(Match match)
-                {
-                    Guid guid = default;
-                    var r = match.Groups["R"];
-                    if (!r.Success)
-                        guid = tag.ItemId;
-                    else if (!Guid.TryParse(r.Value, out guid) && !Guid.TryParse(Regex.Replace(r.Value, Pattern, EvaluateMatch), out guid))
-                        return match.Value;
-                    var item = GetItem(api, guid, items).Result;
-                    if (item is null)
-                        return match.Value;
-
-                    var name = match.Groups["N"].Value;
-                    if (string.Equals(name, "Name", StringComparison.OrdinalIgnoreCase))
-                        return Regex.Replace(item.Name ?? string.Empty, Pattern, EvaluateMatch);
-                    if (string.Equals(name, "Username", StringComparison.OrdinalIgnoreCase))
-                        return Regex.Replace(item.Login?.Username ?? string.Empty, Pattern, EvaluateMatch);
-                    if (string.Equals(name, "Password", StringComparison.OrdinalIgnoreCase))
-                        return Regex.Replace(item.Login?.Password?.GetAsClearText() ?? string.Empty, Pattern, EvaluateMatch);
-                    if (string.Equals(name, "TOTP", StringComparison.OrdinalIgnoreCase))
-                        return Regex.Replace(item.Login?.Totp ?? string.Empty, Pattern, EvaluateMatch);
-                    var field = item.Fields.FirstOrDefault(x => string.Equals(name, x.Name, StringComparison.OrdinalIgnoreCase));
-                    if (field is not null)
-                        return Regex.Replace(field.Value ?? string.Empty, Pattern, EvaluateMatch);
+                Guid guid = default;
+                var r = match.Groups["R"];
+                if (!r.Success)
+                    guid = tag.ItemId;
+                else if (!Guid.TryParse(r.Value, out guid) && !Guid.TryParse(Regex.Replace(r.Value, Pattern, EvaluateMatch), out guid))
                     return match.Value;
-                };
-                await ReplacePlaceholders(argsNode, null, null, api, tag.ItemId, items, Pattern, EvaluateMatch);
-            });
+                var item = GetItem(tag.Vault, guid, items).Result;
+                if (item is null)
+                    return match.Value;
+
+                var name = match.Groups["N"].Value;
+                if (string.Equals(name, "Name", StringComparison.OrdinalIgnoreCase))
+                    return Regex.Replace(item.Name ?? string.Empty, Pattern, EvaluateMatch);
+                if (string.Equals(name, "Username", StringComparison.OrdinalIgnoreCase))
+                    return Regex.Replace(item.Login?.Username ?? string.Empty, Pattern, EvaluateMatch);
+                if (string.Equals(name, "Password", StringComparison.OrdinalIgnoreCase))
+                    return Regex.Replace(item.Login?.Password?.GetAsClearText() ?? string.Empty, Pattern, EvaluateMatch);
+                if (string.Equals(name, "TOTP", StringComparison.OrdinalIgnoreCase))
+                    return Regex.Replace(item.Login?.Totp ?? string.Empty, Pattern, EvaluateMatch);
+                var field = item.Fields.FirstOrDefault(x => string.Equals(name, x.Name, StringComparison.OrdinalIgnoreCase));
+                if (field is not null)
+                    return Regex.Replace(field.Value ?? string.Empty, Pattern, EvaluateMatch);
+                return match.Value;
+            };
+            await ReplacePlaceholders(argsNode, null, null, tag.Vault, tag.ItemId, items, Pattern, EvaluateMatch);
 
             var args = argsNode.Deserialize(tag.Command.ArgumentsType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (args is not null)
@@ -490,19 +317,19 @@ sealed partial class MainWindow : Window
 
             return;
 
-            static async Task<ItemTemplate?> GetItem(ApiClient api, Guid guid, IDictionary<Guid, ItemTemplate?> items)
+            static async Task<ItemTemplate?> GetItem(IVault vault, Guid guid, IDictionary<Guid, ItemTemplate?> items)
             {
                 if (!items.TryGetValue(guid, out var item))
                 {
-                    item = (await api.GetItem(guid).ConfigureAwait(false))?.Data;
+                    item = await vault.GetItem(guid).ConfigureAwait(false);
                     if (!string.IsNullOrEmpty(item?.Login?.Totp))
-                        item = item with { Login = item.Login with { Totp = (await api.GetTotp(guid))?.Data?.Data } };
+                        item = item with { Login = item.Login with { Totp = await vault.GetTotp(guid) } };
                     items.Add(guid, item);
                 }
                 return item;
             }
 
-            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, ApiClient api, Guid? itemId, IDictionary<Guid,ItemTemplate?> items, string pattern, MatchEvaluator matchEvaluator)
+            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, Guid? itemId, IDictionary<Guid,ItemTemplate?> items, string pattern, MatchEvaluator matchEvaluator)
             {
                 if (node is JsonObject obj)
                 {
@@ -512,12 +339,12 @@ sealed partial class MainWindow : Window
                         if (refNode is JsonValue value && value.TryGetValue(out string? str) && Guid.TryParse(str, out var guid))
                         {
                             obj.Remove("@");
-                            item = await GetItem(api, guid, items).ConfigureAwait(false);
+                            item = await GetItem(vault, guid, items).ConfigureAwait(false);
                         }
                     }
                     else if (obj.Parent is null && itemId is not null)
                     {
-                        item = await GetItem(api, itemId.Value, items).ConfigureAwait(false);
+                        item = await GetItem(vault, itemId.Value, items).ConfigureAwait(false);
                     }
                     if (item is not null)
                     {
@@ -531,12 +358,12 @@ sealed partial class MainWindow : Window
                     }
 
                     foreach (var prop in obj.AsEnumerable().ToList())
-                        await ReplacePlaceholders(prop.Value, prop.Key, null, api, null, items, pattern, matchEvaluator);
+                        await ReplacePlaceholders(prop.Value, prop.Key, null, vault, null, items, pattern, matchEvaluator);
                 }
                 else if (node is JsonArray array)
                 {
                     for (int i = 0; i < array.Count; i++)
-                        await ReplacePlaceholders(array[i], null, i, api, null, items, pattern, matchEvaluator).ConfigureAwait(false);
+                        await ReplacePlaceholders(array[i], null, i, vault, null, items, pattern, matchEvaluator).ConfigureAwait(false);
                 }
                 else if (node is JsonValue value && value.TryGetValue(out string? str))
                 {
@@ -548,27 +375,6 @@ sealed partial class MainWindow : Window
             }
         }
     }
-
-    private async void OnMenuLogoutClicked(object sender, RoutedEventArgs e)
-    {
-        _cli.KillServer();
-        await _cli.Logout();
-        if (Directory.Exists(_cli.AppDataDir))
-        {
-            try { Directory.Delete(_cli.AppDataDir, true); }
-            catch
-            {
-                foreach (var file in Directory.EnumerateFiles(_cli.AppDataDir))
-                {
-                    try { File.Delete(file); }
-                    catch { }
-                }
-            }
-        }
-        OnMenuExitClicked(null, null);
-    }
-
-    private async void OnMenuSyncClicked(object sender, RoutedEventArgs e) => await UseApi(api => api.Sync());
 
     private void OnMenuToolsShowWindowInformationClicked(object sender, RoutedEventArgs e)
     {
