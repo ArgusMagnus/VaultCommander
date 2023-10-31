@@ -7,11 +7,11 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
 sealed record ScreenInfo(int Index, bool IsPrimary, int Left, int Top, int Width, int Height);
 
-sealed class BwCommandRdp : BwCommand<BwCommandRdp.Arguments>
+sealed class RdpCommand : Command<RdpCommand.Arguments>
 {
     public sealed record Arguments
     {

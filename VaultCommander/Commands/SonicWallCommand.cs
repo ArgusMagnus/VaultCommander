@@ -8,9 +8,9 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using WinForms = System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandSonicWall : BwCommand<BwCommandSonicWall.Arguments>
+sealed class SonicWallCommand : Command<SonicWallCommand.Arguments>
 {
     public record Arguments
     {
@@ -30,7 +30,7 @@ sealed class BwCommandSonicWall : BwCommand<BwCommandSonicWall.Arguments>
     public override bool CanExecute => File.Exists(_profiles) && File.Exists(_config) && File.Exists(_exe);
     public override bool RequireDisconnect => true;
 
-    public BwCommandSonicWall()
+    public SonicWallCommand()
     {
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SonicWall");
         _profiles = Path.Combine(dir, @"SnwlConnect\Documents\profiles.xml");

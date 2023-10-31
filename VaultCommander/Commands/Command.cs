@@ -8,9 +8,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-abstract class BwCommand<T> : IBwCommand
+abstract class Command<T> : ICommand
     where T : new()
 {
     public abstract string Name { get; }
@@ -20,20 +20,20 @@ abstract class BwCommand<T> : IBwCommand
     public Type ArgumentsType => typeof(T);
     protected virtual bool ExecuteInTerminal(T args) => false;
 
-    async Task IBwCommand.Execute(object _args)
+    async Task ICommand.Execute(object _args)
     {
         var args = (T)_args;
         var executeInTerminal = ExecuteInTerminal(args) && !Debugger.IsAttached;
-        if (executeInTerminal && !IBwCommand.IsInTerminal)
+        if (executeInTerminal && !ICommand.IsInTerminal)
         {
             var json = ProtectedData.Protect(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(args)), null, DataProtectionScope.CurrentUser);
             using TempFile tmpFile = new();
             await File.WriteAllBytesAsync(tmpFile.FullName, json);
             var startInfo = new ProcessStartInfo
             {
-                FileName = Path.ChangeExtension(typeof(IBwCommand).Assembly.Location, ".exe"),
+                FileName = Path.ChangeExtension(typeof(ICommand).Assembly.Location, ".exe"),
                 UseShellExecute = false,
-                ArgumentList = { nameof(Terminal.Verbs.Execute), typeof(BwCommand<T>).Assembly.Location, GetType().FullName!, tmpFile.FullName }
+                ArgumentList = { nameof(Terminal.Verbs.Execute), typeof(Command<T>).Assembly.Location, GetType().FullName!, tmpFile.FullName }
             };
             if (Debugger.IsAttached)
                 startInfo.ArgumentList.Add("/d");
@@ -45,7 +45,7 @@ abstract class BwCommand<T> : IBwCommand
             try { await Execute(args); }
             catch (Exception ex) when (!Debugger.IsAttached)
             {
-                if (!IBwCommand.IsInTerminal)
+                if (!ICommand.IsInTerminal)
                     MessageBox.Show($"Unerwarteter Fehler ({ex.GetType().Name}): {ex.Message}", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
                 else
                 {

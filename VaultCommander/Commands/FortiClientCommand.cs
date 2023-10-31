@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using WinForms = System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandFortiClient : BwCommand<BwCommandFortiClient.Arguments>
+sealed class FortiClientCommand : Command<FortiClientCommand.Arguments>
 {
     public record Arguments
     {

@@ -6,9 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandRdpHvVm : BwCommand<BwCommandRdpHvVm.Arguments>
+sealed class RdpHvVmCommand : Command<RdpHvVmCommand.Arguments>
 {
     public sealed record Arguments
     {

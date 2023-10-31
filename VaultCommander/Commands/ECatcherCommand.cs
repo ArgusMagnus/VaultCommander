@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Xml.Linq;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandECatcher : BwCommand<BwCommandECatcher.Arguments>
+sealed class ECatcherCommand : Command<ECatcherCommand.Arguments>
 {
     public sealed record Arguments
     {
@@ -26,7 +26,7 @@ sealed class BwCommandECatcher : BwCommand<BwCommandECatcher.Arguments>
     public override bool CanExecute => File.Exists(_exe);
     public override bool RequireDisconnect => true;
 
-    public BwCommandECatcher()
+    public ECatcherCommand()
     {
         _exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "eCatcher-Talk2M", "eCatcher.exe");
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".talk2M");

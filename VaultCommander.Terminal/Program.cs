@@ -1,4 +1,4 @@
-﻿using VaultCommander.BwCommands;
+﻿using VaultCommander.Commands;
 using VaultCommander.Terminal;
 using System.Diagnostics;
 using System.Reflection;
@@ -25,9 +25,9 @@ try
                 File.Delete(argsPath);
 
                 var type = Assembly.LoadFrom(assembly).GetType(typeName) ?? throw new InvalidOperationException($"Type '{typeName}' not found.");
-                var command = (IBwCommand)Activator.CreateInstance(type)!;
+                var command = (ICommand)Activator.CreateInstance(type)!;
                 var commandArgs = JsonSerializer.Deserialize(Encoding.UTF8.GetString(ProtectedData.Unprotect(buffer, null, DataProtectionScope.CurrentUser)), command.ArgumentsType) ?? throw new FormatException();
-                IBwCommand.IsInTerminal = true;
+                ICommand.IsInTerminal = true;
                 await command.Execute(commandArgs);
                 break;
             }

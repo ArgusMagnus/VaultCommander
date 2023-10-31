@@ -6,9 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandStartProcess : BwCommand<BwCommandStartProcess.Arguments>
+sealed class StartProcessCommand : Command<StartProcessCommand.Arguments>
 {
     public record Arguments
     {

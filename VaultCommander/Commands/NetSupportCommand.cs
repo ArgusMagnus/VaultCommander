@@ -7,9 +7,9 @@ using System.Text;
 using System.Threading.Tasks;
 using WinForms = System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandNetSupport : BwCommand<BwCommandNetSupport.Arguments>
+sealed class NetSupportCommand : Command<NetSupportCommand.Arguments>
 {
     public record Arguments
     {

@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
-using VaultCommander.BwCommands;
+using VaultCommander.Commands;
 using VaultCommander.Vaults;
 using WinForms = System.Windows.Forms;
 
@@ -27,7 +27,7 @@ sealed partial class MainWindow : Window
 {
     readonly JsonSerializerOptions _jsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     readonly WinForms.NotifyIcon _notifyIcon = new();
-    readonly IReadOnlyDictionary<string, IBwCommand> _commands;
+    readonly IReadOnlyDictionary<string, ICommand> _commands;
     readonly MainVM _vm = new();
     bool _cancelClose = true;
     int _progressBarScope = 0;
@@ -55,8 +55,8 @@ sealed partial class MainWindow : Window
         };
 
         _commands = typeof(MainWindow).Assembly.DefinedTypes
-            .Where(x => !x.IsAbstract && !x.IsInterface && x.ImplementedInterfaces.Contains(typeof(IBwCommand)))
-            .Select(x => (IBwCommand)Activator.CreateInstance(x)!)
+            .Where(x => !x.IsAbstract && !x.IsInterface && x.ImplementedInterfaces.Contains(typeof(ICommand)))
+            .Select(x => (ICommand)Activator.CreateInstance(x)!)
             .ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
 
         Loaded += OnLoaded;
@@ -249,7 +249,7 @@ sealed partial class MainWindow : Window
         }
     }
 
-    sealed record ButtonTag(IVault Vault, Guid ItemId, IBwCommand Command, string Arguments);
+    sealed record ButtonTag(IVault Vault, Guid ItemId, ICommand Command, string Arguments);
 
     private async void OnBwCommandClicked(object sender, RoutedEventArgs e)
     {

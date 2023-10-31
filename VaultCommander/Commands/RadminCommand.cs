@@ -8,9 +8,9 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using WinForms = System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandRadmin : BwCommand<BwCommandRadmin.Arguments>
+sealed class RadminCommand : Command<RadminCommand.Arguments>
 {
     public record Arguments
     {

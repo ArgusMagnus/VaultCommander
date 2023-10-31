@@ -10,9 +10,9 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using WinForms = System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandCiscoAnyConnect : BwCommand<BwCommandCiscoAnyConnect.Arguments>
+sealed class CiscoAnyConnectCommand : Command<CiscoAnyConnectCommand.Arguments>
 {
     public record Arguments
     {
@@ -35,7 +35,7 @@ sealed class BwCommandCiscoAnyConnect : BwCommand<BwCommandCiscoAnyConnect.Argum
     protected override bool ExecuteInTerminal(Arguments args) => true;
     public override bool RequireDisconnect => true;
 
-    public BwCommandCiscoAnyConnect()
+    public CiscoAnyConnectCommand()
     {
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Cisco\Cisco AnyConnect Secure Mobility Client");
         _vpncli = Path.Combine(dir, "vpncli.exe");

@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using WinForms = System.Windows.Forms;
 
-namespace VaultCommander.BwCommands;
+namespace VaultCommander.Commands;
 
-sealed class BwCommandSendKeys : BwCommand<BwCommandSendKeys.Arguments>
+sealed class SendKeysCommand : Command<SendKeysCommand.Arguments>
 {
     public record Arguments
     {

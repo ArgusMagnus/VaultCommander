@@ -1,6 +1,6 @@
-﻿namespace VaultCommander.BwCommands;
+﻿namespace VaultCommander.Commands;
 
-public interface IBwCommand
+public interface ICommand
 {
     public string Name { get; }
     public Type ArgumentsType { get; }
