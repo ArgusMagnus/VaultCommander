@@ -8,5 +8,5 @@ namespace BitwardenExtender.Terminal;
 
 public static class Constants
 {
-    public const string CliDirectory = "cli";
+    public const string DataDirectory = "data";
 }

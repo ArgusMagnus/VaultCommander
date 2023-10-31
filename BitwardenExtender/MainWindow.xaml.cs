@@ -17,6 +17,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using BitwardenExtender.BwCommands;
+using BitwardenExtender.Vaults;
 using WinForms = System.Windows.Forms;
 
 namespace BitwardenExtender;
@@ -30,12 +31,15 @@ sealed partial class MainWindow : Window
     const string CommandPrefix = "bwext:";
     readonly JsonSerializerOptions _jsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     readonly WinForms.NotifyIcon _notifyIcon = new();
-    readonly CliClient _cli;
     readonly IReadOnlyDictionary<string, IBwCommand> _commands;
     readonly MainVM _vm = new();
     bool _cancelClose = true;
     int _progressBarScope = 0;
     CurrentWindowInformationWindow? _currentWindowInfoWindow;
+
+    CliClient _cli;
+
+    readonly IReadOnlyList<IVault> _vaults = IVaultFactory.CreateVaults(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory));
 
 #if SAVE_PW
     EncryptedString? _pw;
@@ -43,7 +47,7 @@ sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        _cli = new(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.CliDirectory, "bw.exe"));
+        _cli = new(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory, "bw.exe"));
         DataContext = _vm;
 
         InitializeComponent();
@@ -64,10 +68,57 @@ sealed partial class MainWindow : Window
             .ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
 
         Loaded += OnLoaded;
+
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        static MenuItem InsertAccountItem(MenuItem parent, MenuItem? beforeItem, IVault vault, StatusDto status)
+        {
+            var item = new MenuItem { Header = $"{status.UserEmail} ({vault.VaultName})" };
+            if (beforeItem is not null)
+                parent.Items.Insert(parent.Items.IndexOf(beforeItem), item);
+            else
+                parent.Items.Add(item);
+
+            MenuItem subItem = new() { Header = "Synchronisieren" };
+            subItem.Click += async (_, _) => await vault.Sync();
+            item.Items.Add(subItem);
+            subItem = new() { Header = "Uris updaten" };
+            subItem.Click += async (_, _) => await vault.UpdateUris();
+            item.Items.Add(subItem);
+            subItem = new() { Header = "Abmelden" };
+            subItem.Click += async (_, _) =>
+            {
+                await vault.Logout();
+                parent.Items.Remove(item);
+            };
+            item.Items.Add(subItem);
+
+            return item;
+        }
+
+        foreach (var vault in _vaults)
+        {
+            var status = await vault.Initialize();
+            if (status is not null && status.Status is not Status.Unauthenticated)
+                InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
+            else
+            {
+                var menuItemLogin = new MenuItem { Header = $"{vault.VaultName}..." };
+                menuItemLogin.Click += async (_, _) =>
+                {
+                    var status = await vault.Login();
+                    if (status is not null && status.Status is not Status.Unauthenticated)
+                    {
+                        InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
+                        //menuItemLogin.IsEnabled = false;
+                    }
+                };
+                _menuItemLogin.Items.Add(menuItemLogin);
+            }
+        }
+
         if (!Directory.Exists(_cli.AppDataDir))
         {
             MessageBox.Show(this, "Bitwarden Desktop Client ist nicht installiert.", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Error);
@@ -75,78 +126,78 @@ sealed partial class MainWindow : Window
             return;
         }
 
-        _vm.StatusBarText = "Auf Updates prüfen...";
+//        _vm.StatusBarText = "Auf Updates prüfen...";
 
-        var uriTask = _cli.GetUpdateUri();
-        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-')[0], out var currentVersion) && releaseVersion > currentVersion)
-        {
-            _vm.StatusBarText = "Downloading update...";
-            _statusBarProgress.IsIndeterminate = false;
-            _statusBarProgress.Visibility = Visibility.Visible;
-            var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            try
-            {
-                await Utils.DownloadRelease(release, dir, value => _vm.StatusBarProgress = value);
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $".{nameof(Terminal)}.exe"),
-                    ArgumentList = { nameof(Terminal.Verbs.Install), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" }
-                };
-                if (Debugger.IsAttached)
-                    startInfo.ArgumentList.Add("/d");
-                using (var process = Process.Start(startInfo)) { }
-                OnMenuExitClicked(null, null);
-                return;
-            }
-            catch (Exception)
-            {
-                Directory.Delete(dir, true);
-                throw;
-            }
-        }
+//        var uriTask = _cli.GetUpdateUri();
+//        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-')[0], out var currentVersion) && releaseVersion > currentVersion)
+//        {
+//            _vm.StatusBarText = "Downloading update...";
+//            _statusBarProgress.IsIndeterminate = false;
+//            _statusBarProgress.Visibility = Visibility.Visible;
+//            var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+//            try
+//            {
+//                await Utils.DownloadRelease(release, dir, value => _vm.StatusBarProgress = value);
+//                var startInfo = new ProcessStartInfo
+//                {
+//                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $".{nameof(Terminal)}.exe"),
+//                    ArgumentList = { nameof(Terminal.Verbs.Install), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" }
+//                };
+//                if (Debugger.IsAttached)
+//                    startInfo.ArgumentList.Add("/d");
+//                using (var process = Process.Start(startInfo)) { }
+//                OnMenuExitClicked(null, null);
+//                return;
+//            }
+//            catch (Exception)
+//            {
+//                Directory.Delete(dir, true);
+//                throw;
+//            }
+//        }
 
-        _cli.TryAttachToApiServer();
-        if (await uriTask is Uri uri)
-        {
-            _vm.StatusBarText = "Downloading Bitwarden CLI...";
-            _statusBarProgress.IsIndeterminate = false;
-            _statusBarProgress.Visibility = Visibility.Visible;
-            _cli.KillServer();
-            await Utils.DownloadAndExpandZipArchive(uri,
-                name => string.Equals(".exe", Path.GetExtension(name), StringComparison.OrdinalIgnoreCase) ? _cli.ExePath : null,
-                progress => _vm.StatusBarProgress = progress);
-            _statusBarProgress.Visibility = Visibility.Collapsed;
-        }
+//        _cli.TryAttachToApiServer();
+//        if (await uriTask is Uri uri)
+//        {
+//            _vm.StatusBarText = "Downloading Bitwarden CLI...";
+//            _statusBarProgress.IsIndeterminate = false;
+//            _statusBarProgress.Visibility = Visibility.Visible;
+//            _cli.KillServer();
+//            await Utils.DownloadAndExpandZipArchive(uri,
+//                name => string.Equals(".exe", Path.GetExtension(name), StringComparison.OrdinalIgnoreCase) ? _cli.ExePath : null,
+//                progress => _vm.StatusBarProgress = progress);
+//            _statusBarProgress.Visibility = Visibility.Collapsed;
+//        }
 
-        if (!await _cli.StartApiServer(null))
-        {
-            _vm.StatusBarText = "Anmelden...";
-#if SAVE_PW
-            _pw = null;
-#endif
-            while (true)
-            {
-                var cred = PasswordDialog.Show(this, null);
-                if (cred == default)
-                {
-                    OnMenuExitClicked(null, null);
-                    break;
-                }
-                if (string.IsNullOrEmpty(cred.UserEmail) || cred.Password is null)
-                    continue;
-                var sessionToken = await _cli.Login(cred.UserEmail, cred.Password);
-                if (string.IsNullOrEmpty(sessionToken))
-                    continue;
-#if SAVE_PW
-                _pw = cred.Password;
-#endif
-                await _cli.StartApiServer(sessionToken);
-                break;
-            }
-        }
+//        if (!await _cli.StartApiServer(null))
+//        {
+//            _vm.StatusBarText = "Anmelden...";
+//#if SAVE_PW
+//            _pw = null;
+//#endif
+//            while (true)
+//            {
+//                var cred = PasswordDialog.Show(this, null);
+//                if (cred == default)
+//                {
+//                    OnMenuExitClicked(null, null);
+//                    break;
+//                }
+//                if (string.IsNullOrEmpty(cred.UserEmail) || cred.Password is null)
+//                    continue;
+//                var sessionToken = await _cli.Login(cred.UserEmail, cred.Password);
+//                if (string.IsNullOrEmpty(sessionToken))
+//                    continue;
+//#if SAVE_PW
+//                _pw = cred.Password;
+//#endif
+//                await _cli.StartApiServer(sessionToken);
+//                break;
+//            }
+//        }
 
-        _vm.StatusBarText = "Fertig";
-        _vm.Status = await (await _cli.GetApiClient()).GetStatus() ?? await _cli.GetStatus();
+//        _vm.StatusBarText = "Fertig";
+//        _vm.Status = await (await _cli.GetApiClient()).GetStatus() ?? await _cli.GetStatus();
     }
 
     private void OnNotifyIconClicked(object? sender, WinForms.MouseEventArgs e)

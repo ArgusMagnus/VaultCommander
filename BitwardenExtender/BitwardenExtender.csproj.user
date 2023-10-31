@@ -13,6 +13,9 @@
     <Compile Update="PasswordDialog.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Update="ProgressBox.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Update="QueryBox.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -28,6 +31,9 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Update="PasswordDialog.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="ProgressBox.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="QueryBox.xaml">

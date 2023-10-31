@@ -43,7 +43,7 @@ try
                 using (var process = Process.Start(new ProcessStartInfo
                 {
                     FileName = "robocopy.exe",
-                    ArgumentList = { AppDomain.CurrentDomain.BaseDirectory, dest, "/MIR", "/XD", Constants.CliDirectory }
+                    ArgumentList = { AppDomain.CurrentDomain.BaseDirectory, dest, "/MIR", "/XD", Constants.DataDirectory }
                 })!)
                 {
                     await process.WaitForExitAsync();

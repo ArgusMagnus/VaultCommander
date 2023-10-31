@@ -28,7 +28,7 @@ sealed partial class QueryBox : Window
 
     public static int Show(string message, string title, params string[] buttons)
     {
-        QueryBox win = new();
+        QueryBox win = new() { Owner = Application.Current.MainWindow };
         win.Title = title;
         win._message.Text = message;
         for (int i = 0; i < buttons.Length; i++)

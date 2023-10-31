@@ -121,13 +121,13 @@ static class Utils
 
     public static async Task DownloadAndExpandZipArchive(Uri uri, Func<string,string?> getDestination, Action<double>? progress)
     {
+        progress?.Invoke(0);
         byte[] buffer;
         using (var httpClient = new HttpClient())
         using (var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
         {
             response.EnsureSuccessStatusCode();
             var contentLength = response.Content.Headers.ContentLength ?? 0;
-            progress?.Invoke(0);
             buffer = new byte[contentLength];
             var memory = new Memory<byte>(buffer);
             int bytesRead;
@@ -139,6 +139,7 @@ static class Utils
             }
         }
 
+        progress?.Invoke(0.5);
         using (var archive = new ZipArchive(new MemoryStream(buffer), ZipArchiveMode.Read, false))
         {
             double total = progress is null ? 0 : archive.Entries.Sum(x => x.Length);

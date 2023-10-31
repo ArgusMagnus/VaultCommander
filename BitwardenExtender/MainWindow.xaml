@@ -16,10 +16,13 @@
         <Menu Grid.Row="0">
             <MenuItem Header="...">
                 <MenuItem Header="Mit Windows starten" IsCheckable="True" IsChecked="{Binding StartWithWindows, Mode=TwoWay}"/>
-                <MenuItem Header="Synchronisieren" Click="OnMenuSyncClicked" IsEnabled="{Binding IsLoggedIn}"/>
-                <MenuItem Header="Update GUIDs" Click="OnMenuUpdateGuidsClicked" IsEnabled="{Binding IsLoggedIn}" />
-                <MenuItem Header="Abmelden" Click="OnMenuLogoutClicked" IsEnabled="{Binding IsLoggedIn}"/>
+                <!--<MenuItem Header="Synchronisieren" Click="OnMenuSyncClicked" IsEnabled="{Binding IsLoggedIn}"/>
+                <MenuItem Header="Update GUIDs" Click="OnMenuUpdateGuidsClicked" IsEnabled="{Binding IsLoggedIn}" />-->
+                <!--<MenuItem Header="Abmelden" Click="OnMenuLogoutClicked" IsEnabled="{Binding IsLoggedIn}"/>-->
                 <MenuItem Header="Beenden" Click="OnMenuExitClicked"/>
+            </MenuItem>
+            <MenuItem Header="Accounts" x:Name="_menuItemAccounts">
+                <MenuItem Header="Anmelden" x:Name="_menuItemLogin"/>
             </MenuItem>
             <MenuItem Header="Tools">
                 <MenuItem Header="Fensterinformationen anzeigen" Click="OnMenuToolsShowWindowInformationClicked"/>
