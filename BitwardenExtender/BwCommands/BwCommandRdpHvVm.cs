@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandRdpHvVm : BwCommand<BwCommandRdpHvVm.Arguments>
 {

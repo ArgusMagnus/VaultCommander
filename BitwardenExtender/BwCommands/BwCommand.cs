@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 abstract class BwCommand<T> : IBwCommand
     where T : new()
@@ -46,7 +46,7 @@ abstract class BwCommand<T> : IBwCommand
             catch (Exception ex) when (!Debugger.IsAttached)
             {
                 if (!IBwCommand.IsInTerminal)
-                    MessageBox.Show($"Unerwarteter Fehler ({ex.GetType().Name}): {ex.Message}", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Unerwarteter Fehler ({ex.GetType().Name}): {ex.Message}", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
                 else
                 {
                     WriteLine(ex.ToString(), ConsoleColor.Red);

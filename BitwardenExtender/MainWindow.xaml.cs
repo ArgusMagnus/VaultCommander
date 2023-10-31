@@ -14,11 +14,11 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
-using BitwardenExtender.BwCommands;
-using BitwardenExtender.Vaults;
+using VaultCommander.BwCommands;
+using VaultCommander.Vaults;
 using WinForms = System.Windows.Forms;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 /// <summary>
 /// Interaction logic for MainWindow.xaml
@@ -38,6 +38,7 @@ sealed partial class MainWindow : Window
 
     public MainWindow()
     {
+        Title = nameof(VaultCommander);
         DataContext = _vm;
         _vaultsByUriScheme = _vaults.ToDictionary(x => x.UriScheme, StringComparer.OrdinalIgnoreCase);
 

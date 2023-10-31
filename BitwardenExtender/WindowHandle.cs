@@ -7,7 +7,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 public enum ShowWindowCommands
 {

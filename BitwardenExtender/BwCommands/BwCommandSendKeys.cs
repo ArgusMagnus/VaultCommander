@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using WinForms = System.Windows.Forms;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandSendKeys : BwCommand<BwCommandSendKeys.Arguments>
 {
@@ -42,7 +42,7 @@ sealed class BwCommandSendKeys : BwCommand<BwCommandSendKeys.Arguments>
 
             if (window == WindowHandle.Null)
             {
-                MessageBox.Show($"Fenster '{args.WindowTitle ?? args.WindowTitlePattern ?? args.WindowTitleRegex}' nicht gefunden.", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Fenster '{args.WindowTitle ?? args.WindowTitlePattern ?? args.WindowTitleRegex}' nicht gefunden.", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
         }

@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using WinForms = System.Windows.Forms;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandSonicWall : BwCommand<BwCommandSonicWall.Arguments>
 {

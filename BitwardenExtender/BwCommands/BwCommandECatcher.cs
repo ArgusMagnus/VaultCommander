@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Xml.Linq;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandECatcher : BwCommand<BwCommandECatcher.Arguments>
 {

@@ -1,5 +1,5 @@
-﻿using BitwardenExtender.BwCommands;
-using BitwardenExtender.Terminal;
+﻿using VaultCommander.BwCommands;
+using VaultCommander.Terminal;
 using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -34,7 +34,7 @@ try
 
         case nameof(Verbs.Install):
             {
-                var dest = args.ElementAtOrDefault(1) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), nameof(BitwardenExtender));
+                var dest = args.ElementAtOrDefault(1) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), nameof(VaultCommander));
                 if (int.TryParse(args.ElementAtOrDefault(2), out var processId))
                 {
                     try { await Process.GetProcessById(processId).WaitForExitAsync(); }
@@ -72,8 +72,8 @@ try
                     .Select(async x => { await Task.Yield(); File.Delete(x); }));
                 Directory.Delete(dir, true);
 
-                var exe = Environment.ProcessPath!.Replace($".{nameof(BitwardenExtender.Terminal)}.", ".");
-                var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), $@"Microsoft\Windows\Start Menu\Programs\{nameof(BitwardenExtender)}.lnk");
+                var exe = Environment.ProcessPath!.Replace($".{nameof(VaultCommander.Terminal)}.", ".");
+                var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), $@"Microsoft\Windows\Start Menu\Programs\{nameof(VaultCommander)}.lnk");
                 Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)!);
                 //var shell = new IWshRuntimeLibrary.WshShell();
                 //var shortcut = (IWshRuntimeLibrary.IWshShortcut)shell.CreateShortcut(shortcutPath);

@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using WinForms = System.Windows.Forms;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandNetSupport : BwCommand<BwCommandNetSupport.Arguments>
 {
@@ -28,7 +28,7 @@ sealed class BwCommandNetSupport : BwCommand<BwCommandNetSupport.Arguments>
     {
         await Task.Delay(0).ConfigureAwait(false);
         char mode;
-        switch (QueryBox.Show("NetSupport Verbindungsart?", nameof(BitwardenExtender), "Control", "Watch", "Share"))
+        switch (QueryBox.Show("NetSupport Verbindungsart?", nameof(VaultCommander), "Control", "Watch", "Share"))
         {
             case 0: mode = 'C'; break;
             case 1: mode = 'W'; break;

@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using WinForms = System.Windows.Forms;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandRadmin : BwCommand<BwCommandRadmin.Arguments>
 {
@@ -41,7 +41,7 @@ sealed class BwCommandRadmin : BwCommand<BwCommandRadmin.Arguments>
         if (args.Gateway is not null)
             startInfo.ArgumentList.Add($"/through:{gateway}");
 
-        switch (QueryBox.Show("Radmin Verbindungsart?", nameof(BitwardenExtender), "Vollsteuerung", "Nur Ansicht", "Dateiübertragung", "Terminal"))
+        switch (QueryBox.Show("Radmin Verbindungsart?", nameof(VaultCommander), "Vollsteuerung", "Nur Ansicht", "Dateiübertragung", "Terminal"))
         {
             case 0: break;
             case 1: startInfo.ArgumentList.Add("/noinput"); break;

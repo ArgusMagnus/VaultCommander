@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using WinForms = System.Windows.Forms;
 
-namespace BitwardenExtender.BwCommands;
+namespace VaultCommander.BwCommands;
 
 sealed class BwCommandFortiClient : BwCommand<BwCommandFortiClient.Arguments>
 {
@@ -55,7 +55,7 @@ sealed class BwCommandFortiClient : BwCommand<BwCommandFortiClient.Arguments>
         if (!string.IsNullOrEmpty(totp))
         {
             Clipboard.SetText(totp);
-            MessageBox.Show("Token wurde in die Zwischenablage kopiert", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Token wurde in die Zwischenablage kopiert", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
@@ -70,7 +70,7 @@ sealed class BwCommandFortiClient : BwCommand<BwCommandFortiClient.Arguments>
         }
         if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(_exe)).Length is 0)
             return true;
-        MessageBox.Show("FortiClient läuft bereits. Bitte beenden und erneut versuchen.", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Error);
+        MessageBox.Show("FortiClient läuft bereits. Bitte beenden und erneut versuchen.", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
         return false;
     }
 }

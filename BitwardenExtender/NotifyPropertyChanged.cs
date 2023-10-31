@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 abstract class NotifyPropertyChanged : INotifyPropertyChanged
 {

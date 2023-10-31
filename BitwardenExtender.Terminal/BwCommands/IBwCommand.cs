@@ -1,4 +1,4 @@
-﻿namespace BitwardenExtender.BwCommands;
+﻿namespace VaultCommander.BwCommands;
 
 public interface IBwCommand
 {

@@ -1,7 +1,7 @@
-﻿<Application x:Class="BitwardenExtender.App"
+﻿<Application x:Class="VaultCommander.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:BitwardenExtender"
+             xmlns:local="clr-namespace:VaultCommander"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
          

@@ -17,7 +17,7 @@ using System.Text.Json.Serialization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 sealed record PollEmailArguments
 {
@@ -165,7 +165,7 @@ static class Utils
         using var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.Accept.Clear();
         httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        httpClient.DefaultRequestHeaders.Add("User-Agent", nameof(BitwardenExtender));
+        httpClient.DefaultRequestHeaders.Add("User-Agent", nameof(VaultCommander));
         return await httpClient.GetFromJsonAsync<ReleaseInfo>("https://api.github.com/repos/ArgusMagnus/BitwardenExtender/releases/latest");
     }
 

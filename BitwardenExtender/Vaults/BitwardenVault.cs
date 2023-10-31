@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace BitwardenExtender.Vaults;
+namespace VaultCommander.Vaults;
 
 sealed partial class BitwardenVault : IVault, IAsyncDisposable
 {
@@ -15,7 +15,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
     public string VaultName => "Bitwarden";
     public string UriScheme => "bwext";
 
-    public string UriFieldName => nameof(BitwardenExtender);
+    public string UriFieldName => nameof(VaultCommander);
 
     BitwardenVault(string dataDirectoryRoot) => _cli = new(Path.Combine(dataDirectoryRoot, VaultName, "bw.exe"));
 

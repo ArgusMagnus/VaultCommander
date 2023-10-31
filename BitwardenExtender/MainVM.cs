@@ -7,7 +7,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 sealed class MainVM : NotifyPropertyChanged
 {
@@ -25,9 +25,9 @@ sealed class MainVM : NotifyPropertyChanged
     {
         using (var regKeyAutostart = Registry.CurrentUser.OpenSubKey(RegKeyAutostart, true)!)
         {
-            _startWithWindows = regKeyAutostart.GetValue(nameof(BitwardenExtender)) is not null;
+            _startWithWindows = regKeyAutostart.GetValue(nameof(VaultCommander)) is not null;
             if (_startWithWindows)
-                regKeyAutostart.SetValue(nameof(BitwardenExtender), Path.ChangeExtension(typeof(MainVM).Assembly.Location, ".exe"));
+                regKeyAutostart.SetValue(nameof(VaultCommander), Path.ChangeExtension(typeof(MainVM).Assembly.Location, ".exe"));
         }
     }
 
@@ -35,9 +35,9 @@ sealed class MainVM : NotifyPropertyChanged
     {
         using var regKeyAutostart = Registry.CurrentUser.OpenSubKey(RegKeyAutostart, true)!;
         if (startWithWindows)
-            regKeyAutostart.SetValue(nameof(BitwardenExtender), Path.ChangeExtension(typeof(MainVM).Assembly.Location, ".exe"));
+            regKeyAutostart.SetValue(nameof(VaultCommander), Path.ChangeExtension(typeof(MainVM).Assembly.Location, ".exe"));
         else
-            regKeyAutostart.DeleteValue(nameof(BitwardenExtender));
+            regKeyAutostart.DeleteValue(nameof(VaultCommander));
     }
 
     public sealed class EntryVM

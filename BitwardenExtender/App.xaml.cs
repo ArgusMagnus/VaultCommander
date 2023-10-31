@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 /// <summary>
 /// Interaction logic for App.xaml
@@ -21,7 +21,7 @@ sealed partial class App : Application
         base.OnStartup(e);
         if (!_mutex.WaitOne(0, true))
         {
-            MessageBox.Show("Die Anwendung läuft bereits.", nameof(BitwardenExtender), MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show("Die Anwendung läuft bereits.", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown();
         }
     }

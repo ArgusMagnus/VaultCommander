@@ -13,9 +13,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
-using BitwardenExtender.BwCommands;
+using VaultCommander.BwCommands;
 
-namespace BitwardenExtender;
+namespace VaultCommander;
 
 /// <summary>
 /// Interaction logic for ConfigureRdpDialog.xaml
