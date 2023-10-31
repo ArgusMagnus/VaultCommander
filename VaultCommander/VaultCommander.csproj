@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BitwardenExtender.Terminal\BitwardenExtender.Terminal.csproj" />
+    <ProjectReference Include="..\VaultCommander.Terminal\VaultCommander.Terminal.csproj" />
   </ItemGroup>
 
 </Project>

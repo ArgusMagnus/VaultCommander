@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.7.34202.233
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VaultCommander", "VaultCommander\VaultCommander.csproj", "{8A2BD243-892B-457F-9D5B-F0CCEBA787B5}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VaultCommander.Terminal", "VaultCommander.Terminal\VaultCommander.Terminal.csproj", "{FCC86277-30DD-4C4A-B42D-47E525292CC8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8A2BD243-892B-457F-9D5B-F0CCEBA787B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A2BD243-892B-457F-9D5B-F0CCEBA787B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A2BD243-892B-457F-9D5B-F0CCEBA787B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A2BD243-892B-457F-9D5B-F0CCEBA787B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCC86277-30DD-4C4A-B42D-47E525292CC8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCC86277-30DD-4C4A-B42D-47E525292CC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCC86277-30DD-4C4A-B42D-47E525292CC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCC86277-30DD-4C4A-B42D-47E525292CC8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BABEC690-C54B-478E-BF5D-959E65B53257}
+	EndGlobalSection
+EndGlobal
