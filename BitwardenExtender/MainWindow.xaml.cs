@@ -1,6 +1,4 @@
-﻿#define SAVE_PW
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -37,10 +35,6 @@ sealed partial class MainWindow : Window
 
     readonly IReadOnlyList<IVault> _vaults = IVaultFactory.CreateVaults(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory));
     readonly IReadOnlyDictionary<string, IVault> _vaultsByUriScheme;
-
-#if SAVE_PW
-    EncryptedString? _pw;
-#endif
 
     public MainWindow()
     {
@@ -383,30 +377,6 @@ sealed partial class MainWindow : Window
             _currentWindowInfoWindow = new();
             _currentWindowInfoWindow.Closed += (_, _) => _currentWindowInfoWindow = null;
             _currentWindowInfoWindow.Show();
-        }
-    }
-
-    ProgressBarScope ShowProgressBar() => new(this);
-
-    readonly struct ProgressBarScope : IDisposable
-    {
-        readonly MainWindow _window;
-        public ProgressBarScope(MainWindow window)
-        {
-            _window = window;
-            if (_window._progressBarScope++ is 0)
-            {
-                _window._statusBarProgress.IsIndeterminate = true;
-                _window._statusBarProgress.Visibility = Visibility.Visible;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (--_window._progressBarScope is 0)
-            {
-                _window._statusBarProgress.Visibility = Visibility.Collapsed;
-            }
         }
     }
 }

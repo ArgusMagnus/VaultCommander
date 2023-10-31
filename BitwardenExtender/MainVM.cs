@@ -14,19 +14,8 @@ sealed class MainVM : NotifyPropertyChanged
     bool _startWithWindows;
     public bool StartWithWindows { get => _startWithWindows; set => SetProperty(ref _startWithWindows, value, OnStartWithWindowsChanged); }
 
-    string _statusBarText = string.Empty;
-    public string StatusBarText { get => _statusBarText; set => SetProperty(ref _statusBarText, value); }
-
-    double _statusBarProgress;
-    public double StatusBarProgress { get => _statusBarProgress; set => SetProperty(ref _statusBarProgress, value); }
-
-    StatusDto? _status;
-    public StatusDto? Status { get => _status; set => SetProperty(ref _status, value, (_,_) => RaisePropertyChanged(nameof(IsLoggedIn))); }
-
     EntryVM? _selectedEntry;
     public EntryVM? SelectedEntry { get => _selectedEntry; set => SetProperty(ref _selectedEntry, value); }
-
-    public bool IsLoggedIn => Status is not null && Status.Status is not BitwardenExtender.Status.Unauthenticated;
 
     public string Version { get; } = typeof(MainVM).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
     

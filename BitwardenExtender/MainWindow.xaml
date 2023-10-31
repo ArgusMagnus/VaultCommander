@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:BitwardenExtender"
         mc:Ignorable="d"
-        Title="BitwardenExtender" SizeToContent="WidthAndHeight">
+        Title="BitwardenExtender" SizeToContent="WidthAndHeight" WindowStyle="ToolWindow">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -44,19 +44,8 @@
             </Grid>
         </Grid>
 
-        <StatusBar Grid.Row="2" x:Name="_statusBar">
-            <StatusBarItem Content="{Binding StatusBarText}"/>
-            <StatusBarItem>
-                <ProgressBar x:Name="_statusBarProgress" Width="100" Height="20" Visibility="Collapsed" Minimum="0" Maximum="1" Value="{Binding StatusBarProgress}" />
-            </StatusBarItem>
-            <Separator/>
-            <StatusBarItem Content="{Binding Status.UserEmail}"/>
-            <Separator/>
-            <StatusBarItem Content="{Binding Status.LastSync}"/>
-            <Separator />
-            <StatusBarItem Content="{Binding Status.Status}"/>
-            <Separator />
-            <StatusBarItem Content="{Binding Version}" ContentStringFormat="v{0}"/>
+        <StatusBar Grid.Row="2">
+            <StatusBarItem Content="{Binding Version}" ContentStringFormat="v{0}" HorizontalAlignment="Right"/>
         </StatusBar>
     </Grid>
 </Window>
