@@ -15,7 +15,7 @@ enum Status
     Unlocked
 }
 
-sealed record StatusDto(Uri? ServerUrl, DateTime? LastSync, string? UserEmail, Guid? UserId, Status Status);
+sealed record StatusDto(string? ServerUrl, DateTime? LastSync, string? UserEmail, Guid? UserId, Status Status);
 
 enum ItemType
 {

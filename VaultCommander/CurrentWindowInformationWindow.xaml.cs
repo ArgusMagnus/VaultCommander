@@ -31,7 +31,7 @@ sealed partial class CurrentWindowInformationWindow : Window
         _eventHook.Event += OnWindowsEvent;
     }
 
-    private async void OnWindowsEvent(WindowsEventHook sender, WindowsEventHook.EventArgs args)
+    private void OnWindowsEvent(WindowsEventHook sender, WindowsEventHook.EventArgs args)
     {
         switch (args.Event)
         {

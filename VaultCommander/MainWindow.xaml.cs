@@ -30,7 +30,6 @@ sealed partial class MainWindow : Window
     readonly IReadOnlyDictionary<string, ICommand> _commands;
     readonly MainVM _vm = new();
     bool _cancelClose = true;
-    int _progressBarScope = 0;
     CurrentWindowInformationWindow? _currentWindowInfoWindow;
 
     readonly IReadOnlyList<IVault> _vaults = IVaultFactory.CreateVaults(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory));
