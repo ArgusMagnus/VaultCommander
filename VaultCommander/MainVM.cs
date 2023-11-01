@@ -17,7 +17,7 @@ sealed class MainVM : NotifyPropertyChanged
     EntryVM? _selectedEntry;
     public EntryVM? SelectedEntry { get => _selectedEntry; set => SetProperty(ref _selectedEntry, value); }
 
-    public string Version { get; } = typeof(MainVM).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+    public string Version { get; } = App.Version;
     
     const string RegKeyAutostart = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
