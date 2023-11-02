@@ -12,7 +12,7 @@ namespace VaultCommander.Commands;
 
 sealed class SonicWallCommand : Command<SonicWallCommand.Arguments>
 {
-    public record Arguments
+    public record Arguments : IArgumentsUsername, IArgumentsPassword, IArgumentsTotp
     {
         public string? Server { get; init; }
         public string? Group { get; init; }

@@ -1,6 +1,5 @@
 ﻿using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Async;
-using KeeperSecurity.Authentication.Sync;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
@@ -8,12 +7,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using VaultCommander.Commands;
 
 namespace VaultCommander.Vaults;
 
@@ -112,7 +111,7 @@ sealed class KeeperVault : IVault, IDisposable
                 continue;
             var newField = new TypedField<string>("url", UriFieldName) { TypedValue = $"{prefix}{data.Uid}" };
             if (field == default)
-                data.Custom.Add(newField);
+                data.Custom.Insert(0, newField);
             else
                 data.Custom[field.i] = newField;
             await vault.UpdateRecord(data);
@@ -124,12 +123,23 @@ sealed class KeeperVault : IVault, IDisposable
     {
         if (record is not TypedRecord data)
             return new(record.Uid, record.Title, Array.Empty<RecordField>());
-        var fields = data.Fields.Concat(data.Custom);
-        if (includeTotp)
-            fields = fields.Concat(fields.Where(x => x.Type == "oneTimeCode").Select(x => new TypedField<string>("text", "Totp") { TypedValue = CryptoUtils.GetTotpCode(x.Value).Item1 }));
-        return new(record.Uid, record.Title, fields
-            .Select(x => new RecordField(string.IsNullOrEmpty(x.FieldLabel) ? x.FieldName : x.FieldLabel, x.Value))
-            .ToList());
+        return new(record.Uid, record.Title, TransformFields(data.Fields.Concat(data.Custom), includeTotp).ToList());
+
+        static IEnumerable<RecordField> TransformFields(IEnumerable<ITypedField> fields, bool includeTotp)
+        {
+            foreach (var field in fields)
+            {
+                var name = field.Type == "login" ? nameof(IArgumentsUsername.Username) : (string.IsNullOrEmpty(field.FieldLabel) ? field.FieldName : field.FieldLabel);
+                yield return new(name, field switch
+                {
+                    TypedField<FieldTypeHost> host => string.IsNullOrEmpty(host.TypedValue.Port) ? host.TypedValue.HostName : $"{host.TypedValue.HostName}:{host.TypedValue.Port}",
+                    _ => field.Value
+                });
+
+                if (includeTotp && field.Type == "oneTimeCode")
+                    yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(field.Value).Item1);
+            }
+        }
     }
 
     sealed class Factory : IVaultFactory

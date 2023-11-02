@@ -11,7 +11,7 @@ namespace VaultCommander.Commands;
 
 sealed class ECatcherCommand : Command<ECatcherCommand.Arguments>
 {
-    public sealed record Arguments
+    public sealed record Arguments : IArgumentsUsername, IArgumentsPassword
     {
         public string? Account { get; init; }
         public string? Username { get; init; }

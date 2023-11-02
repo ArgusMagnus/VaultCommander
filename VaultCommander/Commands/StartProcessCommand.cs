@@ -28,7 +28,7 @@ sealed class StartProcessCommand : Command<StartProcessCommand.Arguments>
         public Arguments() => Impersonation = new(_startInfo);
         public ProcessStartInfo GetStartInfo() => _startInfo;
 
-        public record ImpersonationArguments
+        public record ImpersonationArguments : IArgumentsUsername, IArgumentsPassword
         {
             readonly ProcessStartInfo _startInfo;
 

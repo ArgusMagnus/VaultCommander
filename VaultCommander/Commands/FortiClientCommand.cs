@@ -15,7 +15,7 @@ namespace VaultCommander.Commands;
 
 sealed class FortiClientCommand : Command<FortiClientCommand.Arguments>
 {
-    public record Arguments
+    public record Arguments : IArgumentsUsername, IArgumentsPassword, IArgumentsTotp
     {
         public string? VpnName { get; init; }
         public string? Username { get; init; }

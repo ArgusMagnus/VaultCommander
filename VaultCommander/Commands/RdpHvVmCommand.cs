@@ -10,7 +10,7 @@ namespace VaultCommander.Commands;
 
 sealed class RdpHvVmCommand : Command<RdpHvVmCommand.Arguments>
 {
-    public sealed record Arguments
+    public sealed record Arguments : IArgumentsHost, IArgumentsUsername, IArgumentsPassword
     {
         public string? Host { get; init; }
         public string? VmId { get; init; }

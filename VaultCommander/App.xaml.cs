@@ -20,8 +20,9 @@ sealed partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);
-        if (!_mutex.WaitOne(0, true))
+        if (_mutex.WaitOne(0, true))
+            base.OnStartup(e);
+        else
         {
             MessageBox.Show("Die Anwendung läuft bereits.", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown();

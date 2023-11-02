@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using VaultCommander.Commands;
 
 namespace VaultCommander.Vaults;
 
@@ -14,7 +15,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
     EncryptedString? _savedPw;
 
     public string VaultName => "Bitwarden";
-    public string UriScheme => "bwext";
+    public string UriScheme => "BwCmd";
 
     public string UriFieldName => nameof(VaultCommander);
 
@@ -218,10 +219,10 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
     }
 
     static Record ToRecord(ItemTemplate item) => new(item.Id, item.Name, new RecordField[] {
-        new(nameof(item.Name), item.Name),
-        new(nameof(item.Login.Username), item.Login?.Username),
-        new(nameof(item.Login.Password), item.Login?.Password),
-        new(nameof(item.Login.Totp), item.Login?.Totp)}
+        new(nameof(IArgumentsTitle.Title), item.Name),
+        new(nameof(IArgumentsUsername.Username), item.Login?.Username),
+        new(nameof(IArgumentsPassword.Password), item.Login?.Password),
+        new(nameof(IArgumentsTotp.Totp), item.Login?.Totp)}
         .Concat(item.Fields.Select(x => new RecordField(x.Name, x.Value)))
         .ToList());
 

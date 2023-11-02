@@ -13,7 +13,7 @@ sealed record ScreenInfo(int Index, bool IsPrimary, int Left, int Top, int Width
 
 sealed class RdpCommand : Command<RdpCommand.Arguments>
 {
-    public sealed record Arguments
+    public sealed record Arguments : IArgumentsHost, IArgumentsUsername, IArgumentsPassword
     {
         public string? Host { get; init; }
         public string? Username { get; init; }

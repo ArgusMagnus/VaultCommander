@@ -11,7 +11,7 @@ namespace VaultCommander.Commands;
 
 sealed class NetSupportCommand : Command<NetSupportCommand.Arguments>
 {
-    public record Arguments
+    public record Arguments : IArgumentsUsername, IArgumentsPassword
     {
         public string? Host { get; init; }
         public string? Username { get; init; }
