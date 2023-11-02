@@ -27,8 +27,7 @@ interface IVault
     public Task<StatusDto?> Login();
     public Task<StatusDto?> GetStatus();
     public Task Sync();
-    public Task<ItemTemplate?> UpdateUris(string? uid = null);
+    public Task<Record?> UpdateUris(string? uid = null);
     public Task Logout();
-    public Task<ItemTemplate?> GetItem(string uid);
-    public Task<string?> GetTotp(string uid);
+    public Task<Record?> GetItem(string uid, bool includeTotp = false);
 }

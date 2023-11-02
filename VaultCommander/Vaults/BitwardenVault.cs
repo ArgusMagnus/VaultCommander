@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -95,25 +96,25 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
     public async Task Sync() => await UseApi(api => api.Sync());
 
-    public async Task<ItemTemplate?> UpdateUris(string? uid)
+    public async Task<Record?> UpdateUris(string? uid)
     {
         using var progressBox = await ProgressBox.Show();
         progressBox.DetailText = "Einträge aktualisieren...";
-        var (item, count) = await UseApi(async api =>
+        var (record, count) = await UseApi(async api =>
         {
             await api.Sync();
-            ItemTemplate? item = null;
+            Record? record = null;
             var count = 0;
             var itemsDto = await api.GetItems();
             if (itemsDto?.Success is not true || itemsDto.Data?.Data is null)
-                return (item, count);
+                return (record, count);
 
             var prefix = $"{UriScheme}:";
             foreach (var (data, idx) in itemsDto.Data.Data.Select((x,i) => (x,i)))
             {
                 progressBox.DetailProgress = (idx + 1.0) / itemsDto.Data.Data.Count;
-                if (item is null && data.Id == uid)
-                    item = data;
+                if (record is null && data.Id == uid)
+                    record = ToRecord(data);
                 var element = data.Fields.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.Name == UriFieldName);
                 if (data.Login is not null)
                 {
@@ -142,9 +143,9 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
                 count++;
             }
 
-            return (item, count);
+            return (record, count);
         });
-        return item;
+        return record;
     }
 
     public async Task Logout()
@@ -192,13 +193,19 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
     Task UseApi(Func<ApiClient, Task> func) => UseApi(async api => { await func(api); return true; });
 
-    public async Task<ItemTemplate?> GetItem(string uid)
+    public Task<Record?> GetItem(string uid, bool includeTotp)
     {
-        var response = await UseApi(api => api.GetItem(uid));
-        return response?.Success is true ? response.Data : null;
+        return UseApi(async api =>
+        {
+            var response = await api.GetItem(uid);
+            if (response?.Success is not true)
+                return null;
+            var item = response.Data;
+            if (!string.IsNullOrEmpty(item?.Login?.Totp))
+                item = item with { Login = item.Login with { Totp = (await api.GetTotp(uid))?.Data?.Data } };
+            return item is null ? null : ToRecord(item);
+        });
     }
-
-    public async Task<string?> GetTotp(string uid) => (await UseApi(api => api.GetTotp(uid)))?.Data?.Data;
 
     public async ValueTask DisposeAsync()
     {
@@ -210,8 +217,118 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
         _cli.Dispose();
     }
 
+    static Record ToRecord(ItemTemplate item) => new(item.Id, item.Name, new RecordField[] {
+        new(nameof(item.Name), item.Name),
+        new(nameof(item.Login.Username), item.Login?.Username),
+        new(nameof(item.Login.Password), item.Login?.Password),
+        new(nameof(item.Login.Totp), item.Login?.Totp)}
+        .Concat(item.Fields.Select(x => new RecordField(x.Name, x.Value)))
+        .ToList());
+
     sealed class Factory : IVaultFactory
     {
         public IVault CreateVault(string dataDirectoryRoot) => new BitwardenVault(dataDirectoryRoot);
+    }
+
+    enum ItemType
+    {
+        Login = 1,
+        SecureNote,
+        Card,
+        Identity
+    }
+
+    enum FieldType
+    {
+        Text = 0,
+        Hidden,
+        Boolean,
+        Link
+    }
+
+    enum UriMatchType
+    {
+        Domain = 0,
+        Host,
+        StartsWith,
+        Exact,
+        Regex,
+        Never
+    }
+
+    sealed record Field
+    {
+        public string Name { get; init; } = string.Empty;
+        public string? Value { get; init; }
+        public FieldType Type { get; init; }
+        public string? LinkedId { get; init; }
+    }
+
+    sealed record ItemTemplate
+    {
+        public string Id { get; init; } = null!;
+        public Guid? OrganizationId { get; init; }
+        public IReadOnlyList<Guid> CollectionIds { get; init; } = Array.Empty<Guid>();
+        public Guid? FolderId { get; init; }
+        public ItemType Type { get; init; }
+        public string? Name { get; init; }
+        public string? Notes { get; init; }
+        public bool Favorite { get; init; }
+        public IList<Field> Fields { get; init; } = new List<Field>();
+        public ItemLogin? Login { get; init; }
+        public ItemSecureNote? SecureNote { get; init; }
+        public ItemCard? Card { get; init; }
+        public IReadOnlyDictionary<string, string>? Identity { get; init; }
+        public int Reprompt { get; init; }
+    }
+
+    sealed record ItemLogin
+    {
+        public IList<ItemUri> Uris { get; init; } = new List<ItemUri>();
+        public string? Username { get; init; }
+        public string? Password { get; init; }
+        public string? Totp { get; init; }
+    }
+
+    sealed record ItemSecureNote
+    {
+        public int Type { get; init; }
+    }
+
+    sealed record ItemCard
+    {
+        public string CardholderName { get; init; } = string.Empty;
+        public string Brand { get; init; } = string.Empty;
+        public string Number { get; init; } = string.Empty;
+        public string ExpMonth { get; init; } = string.Empty;
+        public string ExpYear { get; init; } = string.Empty;
+        public string Code { get; init; } = string.Empty;
+    }
+
+    sealed record ItemUri
+    {
+        public UriMatchType? Match { get; init; }
+        public string? Uri { get; init; }
+    }
+
+    abstract record ObjectResponse<T>
+    {
+        public bool Success { get; init; }
+        public DataDto? Data { get; init; }
+
+        public sealed record DataDto
+        {
+            public string Object { get; init; } = string.Empty;
+            public T? Data { get; init; }
+        }
+    }
+
+    sealed record GetListItemsDto : ObjectResponse<IReadOnlyList<ItemTemplate>>;
+    sealed record GetTotpDto : ObjectResponse<string>;
+
+    sealed record GetItemDto
+    {
+        public bool Success { get; init; }
+        public ItemTemplate Data { get; init; } = new();
     }
 }

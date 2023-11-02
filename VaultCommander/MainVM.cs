@@ -45,10 +45,10 @@ sealed class MainVM : NotifyPropertyChanged
         public string Id { get; }
         public string? Name { get; }
 
-        public EntryVM(ItemTemplate item)
+        public EntryVM(Record record)
         {
-            Id = item.Id;
-            Name = item.Name;
+            Id = record.Id;
+            Name = record.Name;
         }
     }
 }

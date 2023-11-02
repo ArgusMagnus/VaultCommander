@@ -52,10 +52,10 @@ sealed class KeeperVault : IVault, IDisposable
         return new(_auth) { AutoSync = true, VaultUi = new VaultUi() };
     }
 
-    public async Task<ItemTemplate?> GetItem(string uid)
+    public async Task<Record?> GetItem(string uid, bool includeTotp)
     {
         var vault = await _vault.Value.ConfigureAwait(false);
-        return vault.TryGetKeeperRecord(uid, out var record) ? ToItemTemplate(record) : null;
+        return vault.TryGetKeeperRecord(uid, out var record) ? ToRecord(record, includeTotp) : null;
     }
 
     public Task<StatusDto?> GetStatus()
@@ -63,11 +63,6 @@ sealed class KeeperVault : IVault, IDisposable
         var status = _auth.IsAuthenticated() ? Status.Unlocked :
             (string.IsNullOrEmpty(_auth.Storage.LastLogin) ? Status.Unauthenticated : Status.Locked);
         return Task.FromResult<StatusDto?>(new(_auth.Storage.LastServer, null, _auth.Storage.LastLogin, null, status));
-    }
-
-    public Task<string?> GetTotp(string uid)
-    {
-        throw new NotImplementedException();
     }
 
     public Task<StatusDto?> Initialize()
@@ -96,9 +91,9 @@ sealed class KeeperVault : IVault, IDisposable
 
     public async Task Sync() => await (await _vault.Value.ConfigureAwait(false)).SyncDown();
 
-    public async Task<ItemTemplate?> UpdateUris(string? uid)
+    public async Task<Record?> UpdateUris(string? uid)
     {
-        ItemTemplate? item = null;
+        Record? item = null;
         using var progressBox = await ProgressBox.Show().ConfigureAwait(false);
         progressBox.DetailText = "Einträge aktualisieren...";
         var vault = await _vault.Value.ConfigureAwait(false);
@@ -111,7 +106,7 @@ sealed class KeeperVault : IVault, IDisposable
             if (record is not TypedRecord data)
                 continue;
             if (item is null && data.Uid == uid)
-                item = ToItemTemplate(data);
+                item = ToRecord(data);
             var field = data.Custom.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.FieldLabel == UriFieldName && x.x.ObjectValue is string value && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
             if (string.Equals(field.x?.Value.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -125,7 +120,17 @@ sealed class KeeperVault : IVault, IDisposable
         return item;
     }
 
-    static ItemTemplate ToItemTemplate(KeeperRecord record) => new() { Id = record.Uid };
+    static Record ToRecord(KeeperRecord record, bool includeTotp = false)
+    {
+        if (record is not TypedRecord data)
+            return new(record.Uid, record.Title, Array.Empty<RecordField>());
+        var fields = data.Fields.Concat(data.Custom);
+        if (includeTotp)
+            fields = fields.Concat(fields.Where(x => x.Type == "oneTimeCode").Select(x => new TypedField<string>("text", "Totp") { TypedValue = CryptoUtils.GetTotpCode(x.Value).Item1 }));
+        return new(record.Uid, record.Title, fields
+            .Select(x => new RecordField(string.IsNullOrEmpty(x.FieldLabel) ? x.FieldName : x.FieldLabel, x.Value))
+            .ToList());
+    }
 
     sealed class Factory : IVaultFactory
     {

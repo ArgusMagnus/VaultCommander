@@ -196,6 +196,9 @@ sealed partial class MainWindow : Window
         _buttons.Children.Clear();
         _vm.SelectedEntry = null;
 
+        if (string.IsNullOrEmpty(uid))
+            return;
+
         static Point GetMousePosition()
         {
             var point = WinForms.Control.MousePosition;
@@ -217,26 +220,26 @@ sealed partial class MainWindow : Window
                 return;
         }
 
-        ItemTemplate? item = null;
-        try { item = await vault.GetItem(uid); }
+        Record? record = null;
+        try { record = await vault.GetItem(uid); }
         catch { }
 
-        if (item?.Id != uid)
-            item = await vault.UpdateUris(uid);
+        if (record?.Id != uid)
+            record = await vault.UpdateUris(uid);
 
-        if (item is null)
+        if (record is null)
         {
             MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
-        _vm.SelectedEntry = new(item);
-        foreach (var field in item.Fields.Where(x => !string.IsNullOrEmpty(x.Value)))
+        _vm.SelectedEntry = new(record);
+        foreach (var field in record.Fields.Where(x => !string.IsNullOrEmpty(x.Value)))
         {
             var parts = field.Value!.Split(':', 2);
             if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
                 continue;
-            var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, item.Id, bwCommand, parts[1]) };
+            var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, record.Id, bwCommand, parts[1]) };
             button.Click += OnBwCommandClicked;
             _buttons.Children.Add(button);
         }
@@ -268,7 +271,7 @@ sealed partial class MainWindow : Window
                 }
             }
 
-            Dictionary<string, ItemTemplate?> items = new();
+            Dictionary<string, Record?> records = new();
             const string Pattern = @"\{(?<N>\w+)(?:@(?<R>(?>(?>(?<c>\{)?[\w@\-]*)+(?>(?<-c>\})?)+)+))?\}";
 
             string EvaluateMatch(Match match)
@@ -277,25 +280,17 @@ sealed partial class MainWindow : Window
                 var r = match.Groups["R"];
                 if (r.Success)
                     uid = Regex.Replace(r.Value, Pattern, EvaluateMatch);
-                var item = GetItem(tag.Vault, uid, items).Result;
+                var item = GetItem(tag.Vault, uid, records).Result;
                 if (item is null)
                     return match.Value;
 
                 var name = match.Groups["N"].Value;
-                if (string.Equals(name, "Name", StringComparison.OrdinalIgnoreCase))
-                    return Regex.Replace(item.Name ?? string.Empty, Pattern, EvaluateMatch);
-                if (string.Equals(name, "Username", StringComparison.OrdinalIgnoreCase))
-                    return Regex.Replace(item.Login?.Username ?? string.Empty, Pattern, EvaluateMatch);
-                if (string.Equals(name, "Password", StringComparison.OrdinalIgnoreCase))
-                    return Regex.Replace(item.Login?.Password?.GetAsClearText() ?? string.Empty, Pattern, EvaluateMatch);
-                if (string.Equals(name, "TOTP", StringComparison.OrdinalIgnoreCase))
-                    return Regex.Replace(item.Login?.Totp ?? string.Empty, Pattern, EvaluateMatch);
                 var field = item.Fields.FirstOrDefault(x => string.Equals(name, x.Name, StringComparison.OrdinalIgnoreCase));
                 if (field is not null)
                     return Regex.Replace(field.Value ?? string.Empty, Pattern, EvaluateMatch);
                 return match.Value;
             };
-            await ReplacePlaceholders(argsNode, null, null, tag.Vault, tag.ItemId, items, Pattern, EvaluateMatch);
+            await ReplacePlaceholders(argsNode, null, null, tag.Vault, tag.ItemId, records, Pattern, EvaluateMatch);
 
             var args = argsNode.Deserialize(tag.Command.ArgumentsType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (args is not null)
@@ -303,53 +298,47 @@ sealed partial class MainWindow : Window
 
             return;
 
-            static async Task<ItemTemplate?> GetItem(IVault vault, string uid, IDictionary<string, ItemTemplate?> items)
+            static async Task<Record?> GetItem(IVault vault, string uid, IDictionary<string, Record?> items)
             {
-                if (!items.TryGetValue(uid, out var item))
+                if (!items.TryGetValue(uid, out var record))
                 {
-                    item = await vault.GetItem(uid).ConfigureAwait(false);
-                    if (!string.IsNullOrEmpty(item?.Login?.Totp))
-                        item = item with { Login = item.Login with { Totp = await vault.GetTotp(uid) } };
-                    items.Add(uid, item);
+                    record = await vault.GetItem(uid, true).ConfigureAwait(false);
+                    items.Add(uid, record);
                 }
-                return item;
+                return record;
             }
 
-            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, string? itemId, IDictionary<string, ItemTemplate?> items, string pattern, MatchEvaluator matchEvaluator)
+            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, string? itemId, IDictionary<string, Record?> records, string pattern, MatchEvaluator matchEvaluator)
             {
                 if (node is JsonObject obj)
                 {
-                    ItemTemplate? item = null;
+                    Record? record = null;
                     if (obj.TryGetPropertyValue("@", out var refNode))
                     {
                         if (refNode is JsonValue value && value.TryGetValue(out string? uid))
                         {
                             obj.Remove("@");
-                            item = await GetItem(vault, uid, items).ConfigureAwait(false);
+                            record = await GetItem(vault, uid, records).ConfigureAwait(false);
                         }
                     }
                     else if (obj.Parent is null && itemId is not null)
                     {
-                        item = await GetItem(vault, itemId, items).ConfigureAwait(false);
+                        record = await GetItem(vault, itemId, records).ConfigureAwait(false);
                     }
-                    if (item is not null)
+                    if (record is not null)
                     {
-                        var guid = $"{item.Id}";
-                        obj.TryAdd("Name", JsonValue.Create($"{{Name@{guid}}}"));
-                        obj.TryAdd("Username", JsonValue.Create($"{{Username@{guid}}}"));
-                        obj.TryAdd("Password", JsonValue.Create($"{{Password@{guid}}}"));
-                        obj.TryAdd("TOTP", JsonValue.Create($"{{TOTP@{guid}}}"));
-                        foreach (var field in item.Fields)
+                        var guid = $"{record.Id}";
+                        foreach (var field in record.Fields)
                             obj.TryAdd(field.Name, JsonValue.Create($"{{{field.Name}@{guid}}}"));
                     }
 
                     foreach (var prop in obj.AsEnumerable().ToList())
-                        await ReplacePlaceholders(prop.Value, prop.Key, null, vault, null, items, pattern, matchEvaluator);
+                        await ReplacePlaceholders(prop.Value, prop.Key, null, vault, null, records, pattern, matchEvaluator);
                 }
                 else if (node is JsonArray array)
                 {
                     for (int i = 0; i < array.Count; i++)
-                        await ReplacePlaceholders(array[i], null, i, vault, null, items, pattern, matchEvaluator).ConfigureAwait(false);
+                        await ReplacePlaceholders(array[i], null, i, vault, null, records, pattern, matchEvaluator).ConfigureAwait(false);
                 }
                 else if (node is JsonValue value && value.TryGetValue(out string? str))
                 {
