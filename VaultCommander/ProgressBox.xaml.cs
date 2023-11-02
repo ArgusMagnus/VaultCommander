@@ -42,7 +42,7 @@ sealed partial class ProgressBox : Window
             _progressBox = progressBox;
         }
 
-        public void Dispose() => _progressBox.Close();
+        public void Dispose() => _progressBox.Dispatcher.InvokeAsync(_progressBox.Close);
 
         string? _detailText;
         public string? DetailText { get => _detailText; set => SetProperty(ref _detailText, value); }

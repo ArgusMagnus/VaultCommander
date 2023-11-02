@@ -71,7 +71,7 @@ sealed class KeeperVault : IVault, IDisposable
         if (pw is not null)
         {
             var ui = (AuthUi)_auth.Ui;
-            using (ui.ProgressBox = await ProgressBox.Show())
+            using (ui.ProgressBox = await ProgressBox.Show().ConfigureAwait(false))
             {
                 ui.ProgressBox.DetailText = "Anmelden...";
                 ui.ProgressBox.DetailProgress = double.NaN;
@@ -118,43 +118,37 @@ sealed class KeeperVault : IVault, IDisposable
     sealed class AuthUi : IAuthUI
     {
         public ProgressBox.IViewModel? ProgressBox { get; set; }
+
         public async Task<bool> WaitForDeviceApproval(IDeviceApprovalChannelInfo[] channels, CancellationToken token)
         {
-            // find email device approval channel.
-            var emailChannel = channels
-                .OfType<IDeviceApprovalPushInfo>()
-                .FirstOrDefault(x => x.Channel == DeviceApprovalChannel.Email);
-            if (emailChannel is not null)
+            var usedChannels = channels.OfType<IDeviceApprovalPushInfo>().ToList();
+            if (!usedChannels.Any())
+                return false;
+
+            if (ProgressBox is not null)
             {
-                // invoke send email action.
-                if (ProgressBox is not null)
-                {
-                    ProgressBox.DetailText = "Email wurde versandt. Auf Genehmigung warten...";
-                    ProgressBox.DetailProgress = double.NaN;
-                }
-                await emailChannel.InvokeDeviceApprovalPushAction();
-                return true;
+                ProgressBox.DetailText = $"Anfrage ({string.Join(", ", usedChannels.Select(x => x.Channel))}) wurde versandt. Auf Genehmigung warten...";
+                ProgressBox.DetailProgress = double.NaN;
             }
-            return false;
+            await Task.WhenAll(usedChannels.Select(x => Task.Run(() => x.InvokeDeviceApprovalPushAction()))).ConfigureAwait(false);
+            return true;
         }
+
         public async Task<bool> WaitForTwoFactorCode(ITwoFactorChannelInfo[] channels, CancellationToken token)
         {
-            // find 2FA code channel.
-            //var codeChannel = channels
-            //    .OfType<ITwoFactorAppCodeInfo>()
-            //    .FirstOrDefault();
-            //if (codeChannel != null)
-            //{
-            //    Console.WriteLine("Enter 2FA code: ");
-            //    var code = Console.ReadLine();
-            //    await codeChannel.InvokeTwoFactorCodeAction(code);
-            //    return true;
-            //}
-            return false;
+            var codeChannel = channels.OfType<ITwoFactorAppCodeInfo>().FirstOrDefault();
+            if (codeChannel is null)
+                return false;
+            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "2FA")).Task.ConfigureAwait(false);
+            if (pw is null)
+                return false;
+            await codeChannel.InvokeTwoFactorCodeAction(pw.GetAsClearText());
+            return true;
         }
+
         public async Task<bool> WaitForUserPassword(IPasswordInfo info, CancellationToken token)
         {
-            var (_,pw) = PasswordDialog.Show(Application.Current.MainWindow, info.Username);
+            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, info.Username)).Task.ConfigureAwait(false);
             if (pw is null)
                 return false;
             await info.InvokePasswordActionDelegate(pw.GetAsClearText());
