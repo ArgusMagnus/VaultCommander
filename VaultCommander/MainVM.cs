@@ -42,7 +42,7 @@ sealed class MainVM : NotifyPropertyChanged
 
     public sealed class EntryVM
     {
-        public Guid Id { get; }
+        public string Id { get; }
         public string? Name { get; }
 
         public EntryVM(ItemTemplate item)

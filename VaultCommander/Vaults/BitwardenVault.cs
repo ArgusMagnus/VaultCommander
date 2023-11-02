@@ -95,7 +95,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
     public async Task Sync() => await UseApi(api => api.Sync());
 
-    public async Task<ItemTemplate?> UpdateUris(Guid guid)
+    public async Task<ItemTemplate?> UpdateUris(string? uid)
     {
         using var progressBox = await ProgressBox.Show();
         progressBox.DetailText = "Einträge aktualisieren...";
@@ -112,13 +112,15 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
             foreach (var (data, idx) in itemsDto.Data.Data.Select((x,i) => (x,i)))
             {
                 progressBox.DetailProgress = (idx + 1.0) / itemsDto.Data.Data.Count;
+                if (item is null && data.Id == uid)
+                    item = data;
                 var element = data.Fields.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.Name == UriFieldName);
                 if (data.Login is not null)
                 {
                     if (element != default)
                         data.Fields.RemoveAt(element.i);
                     var uri = data.Login.Uris.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.Uri?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) is true);
-                    if (Guid.TryParse(uri.x?.Uri?.Substring(prefix.Length), out var tmp) && tmp == data.Id)
+                    if (uri.x?.Uri?.Substring(prefix.Length) == data.Id)
                         continue;
                     var newUri = new ItemUri { Uri = $"{prefix}{data.Id}", Match = UriMatchType.Never };
                     if (uri == default)
@@ -128,7 +130,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
                 }
                 else
                 {
-                    if (element.x?.Value?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) is true && Guid.TryParse(element.x.Value.Substring(prefix.Length), out var tmp) && tmp == data.Id)
+                    if (element.x?.Value?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) is true && element.x.Value.Substring(prefix.Length) == data.Id)
                         continue;
                     var newField = new Field { Name = UriFieldName, Value = $"{prefix}{data.Id}", Type = FieldType.Text };
                     if (element == default)
@@ -136,10 +138,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
                     else
                         data.Fields[element.i] = newField;
                 }
-
                 await api.PutItem(data);
-                if (data.Id == guid)
-                    item = data;
                 count++;
             }
 
@@ -193,13 +192,13 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
     Task UseApi(Func<ApiClient, Task> func) => UseApi(async api => { await func(api); return true; });
 
-    public async Task<ItemTemplate?> GetItem(Guid guid)
+    public async Task<ItemTemplate?> GetItem(string uid)
     {
-        var response = await UseApi(api => api.GetItem(guid));
+        var response = await UseApi(api => api.GetItem(uid));
         return response?.Success is true ? response.Data : null;
     }
 
-    public async Task<string?> GetTotp(Guid guid) => (await UseApi(api => api.GetTotp(guid)))?.Data?.Data;
+    public async Task<string?> GetTotp(string uid) => (await UseApi(api => api.GetTotp(uid)))?.Data?.Data;
 
     public async ValueTask DisposeAsync()
     {

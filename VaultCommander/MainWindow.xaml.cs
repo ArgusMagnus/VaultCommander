@@ -189,7 +189,7 @@ sealed partial class MainWindow : Window
         return nint.Zero;
     }
 
-    private async void OnClipboardCommand(IVault vault, string? strGuid)
+    private async void OnClipboardCommand(IVault vault, string? uid)
     {
         foreach (Button button in _buttons.Children)
             button.Click -= OnBwCommandClicked;
@@ -217,22 +217,16 @@ sealed partial class MainWindow : Window
                 return;
         }
 
-        if (!Guid.TryParse(strGuid, out var guid))
-        {
-            MessageBox.Show(this, $"'{strGuid}' ist keine gültige GUID.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
         ItemTemplate? item = null;
-        try { item = await vault.GetItem(guid); }
+        try { item = await vault.GetItem(uid); }
         catch { }
 
-        if (item?.Id != guid)
-            item = await vault.UpdateUris(guid);
+        if (item?.Id != uid)
+            item = await vault.UpdateUris(uid);
 
         if (item is null)
         {
-            MessageBox.Show(this, $"Es wurde kein Eintrag mit der GUID '{strGuid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
@@ -248,7 +242,7 @@ sealed partial class MainWindow : Window
         }
     }
 
-    sealed record ButtonTag(IVault Vault, Guid ItemId, ICommand Command, string Arguments);
+    sealed record ButtonTag(IVault Vault, string ItemId, ICommand Command, string Arguments);
 
     private async void OnBwCommandClicked(object sender, RoutedEventArgs e)
     {
@@ -274,18 +268,16 @@ sealed partial class MainWindow : Window
                 }
             }
 
-            Dictionary<Guid, ItemTemplate?> items = new();
+            Dictionary<string, ItemTemplate?> items = new();
             const string Pattern = @"\{(?<N>\w+)(?:@(?<R>(?>(?>(?<c>\{)?[\w@\-]*)+(?>(?<-c>\})?)+)+))?\}";
 
             string EvaluateMatch(Match match)
             {
-                Guid guid = default;
+                string uid = tag.ItemId;
                 var r = match.Groups["R"];
-                if (!r.Success)
-                    guid = tag.ItemId;
-                else if (!Guid.TryParse(r.Value, out guid) && !Guid.TryParse(Regex.Replace(r.Value, Pattern, EvaluateMatch), out guid))
-                    return match.Value;
-                var item = GetItem(tag.Vault, guid, items).Result;
+                if (r.Success)
+                    uid = Regex.Replace(r.Value, Pattern, EvaluateMatch);
+                var item = GetItem(tag.Vault, uid, items).Result;
                 if (item is null)
                     return match.Value;
 
@@ -311,34 +303,34 @@ sealed partial class MainWindow : Window
 
             return;
 
-            static async Task<ItemTemplate?> GetItem(IVault vault, Guid guid, IDictionary<Guid, ItemTemplate?> items)
+            static async Task<ItemTemplate?> GetItem(IVault vault, string uid, IDictionary<string, ItemTemplate?> items)
             {
-                if (!items.TryGetValue(guid, out var item))
+                if (!items.TryGetValue(uid, out var item))
                 {
-                    item = await vault.GetItem(guid).ConfigureAwait(false);
+                    item = await vault.GetItem(uid).ConfigureAwait(false);
                     if (!string.IsNullOrEmpty(item?.Login?.Totp))
-                        item = item with { Login = item.Login with { Totp = await vault.GetTotp(guid) } };
-                    items.Add(guid, item);
+                        item = item with { Login = item.Login with { Totp = await vault.GetTotp(uid) } };
+                    items.Add(uid, item);
                 }
                 return item;
             }
 
-            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, Guid? itemId, IDictionary<Guid,ItemTemplate?> items, string pattern, MatchEvaluator matchEvaluator)
+            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, string? itemId, IDictionary<string, ItemTemplate?> items, string pattern, MatchEvaluator matchEvaluator)
             {
                 if (node is JsonObject obj)
                 {
                     ItemTemplate? item = null;
                     if (obj.TryGetPropertyValue("@", out var refNode))
                     {
-                        if (refNode is JsonValue value && value.TryGetValue(out string? str) && Guid.TryParse(str, out var guid))
+                        if (refNode is JsonValue value && value.TryGetValue(out string? uid))
                         {
                             obj.Remove("@");
-                            item = await GetItem(vault, guid, items).ConfigureAwait(false);
+                            item = await GetItem(vault, uid, items).ConfigureAwait(false);
                         }
                     }
                     else if (obj.Parent is null && itemId is not null)
                     {
-                        item = await GetItem(vault, itemId.Value, items).ConfigureAwait(false);
+                        item = await GetItem(vault, itemId, items).ConfigureAwait(false);
                     }
                     if (item is not null)
                     {

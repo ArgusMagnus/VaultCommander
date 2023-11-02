@@ -53,7 +53,7 @@ sealed record Field
 
 sealed record ItemTemplate
 {
-    public Guid Id { get; init; }
+    public string Id { get; init; } = null!;
     public Guid? OrganizationId { get; init; }
     public IReadOnlyList<Guid> CollectionIds { get; init; } = Array.Empty<Guid>();
     public Guid? FolderId { get; init; }

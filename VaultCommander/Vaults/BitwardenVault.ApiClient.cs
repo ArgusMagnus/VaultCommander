@@ -28,10 +28,10 @@ sealed partial class BitwardenVault
         public async Task Lock() => await EnsureSuccessStatusCode(await _client.PostAsync("/lock", null));
         public async Task<bool> Unlock(EncryptedString password) => (await _client.PostAsJsonAsync("/unlock", new Dictionary<string, EncryptedString> { ["password"] = password }, _jsonOptions)).IsSuccessStatusCode;
         public async Task Sync() => await EnsureSuccessStatusCode(await _client.PostAsync("/sync", null));
-        public Task<GetItemDto?> GetItem(Guid guid) => _client.GetFromJsonAsync<GetItemDto>($"/object/item/{guid}", _jsonOptions);
+        public Task<GetItemDto?> GetItem(string uid) => _client.GetFromJsonAsync<GetItemDto>($"/object/item/{uid}", _jsonOptions);
         public Task<GetListItemsDto?> GetItems() => _client.GetFromJsonAsync<GetListItemsDto>("/list/object/items", _jsonOptions);
         public async Task PutItem(ItemTemplate item) => await EnsureSuccessStatusCode(await _client.PutAsJsonAsync($"object/item/{item.Id}", item, _jsonOptions));
-        public Task<GetTotpDto?> GetTotp(Guid guid) => _client.GetFromJsonAsync<GetTotpDto>($"/object/totp/{guid}", _jsonOptions);
+        public Task<GetTotpDto?> GetTotp(string uid) => _client.GetFromJsonAsync<GetTotpDto>($"/object/totp/{uid}", _jsonOptions);
 
         static async Task EnsureSuccessStatusCode(HttpResponseMessage response)
         {

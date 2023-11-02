@@ -3,6 +3,7 @@ using KeeperSecurity.Authentication.Async;
 using KeeperSecurity.Authentication.Sync;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
+using KeeperSecurity.Vault;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -28,6 +29,7 @@ sealed class KeeperVault : IVault, IDisposable
 
     readonly string _dataDirectory;
     readonly Auth _auth;
+    readonly Lazy<Task<VaultOnline>> _vault;
 
     KeeperVault(string dataDirectoryRoot)
     {
@@ -38,13 +40,22 @@ sealed class KeeperVault : IVault, IDisposable
             ConfigurationProtection = new ConfigurationProtectionFactory()
         }));
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
+        _vault = new(VaultFactory);
     }
 
     public void Dispose() => _auth.Dispose();
 
-    public Task<ItemTemplate?> GetItem(Guid guid)
+    private async Task<VaultOnline> VaultFactory()
     {
-        throw new NotImplementedException();
+        if (_auth.AuthContext is null)
+            await Login().ConfigureAwait(false);
+        return new(_auth) { AutoSync = true, VaultUi = new VaultUi() };
+    }
+
+    public async Task<ItemTemplate?> GetItem(string uid)
+    {
+        var vault = await _vault.Value.ConfigureAwait(false);
+        return vault.TryGetKeeperRecord(uid, out var record) ? ToItemTemplate(record) : null;
     }
 
     public Task<StatusDto?> GetStatus()
@@ -54,7 +65,7 @@ sealed class KeeperVault : IVault, IDisposable
         return Task.FromResult<StatusDto?>(new(_auth.Storage.LastServer, null, _auth.Storage.LastLogin, null, status));
     }
 
-    public Task<string?> GetTotp(Guid guid)
+    public Task<string?> GetTotp(string uid)
     {
         throw new NotImplementedException();
     }
@@ -67,11 +78,11 @@ sealed class KeeperVault : IVault, IDisposable
     public async Task<StatusDto?> Login()
     {
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
-        var (user, pw) = PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.LastLogin);
+        var (user, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.LastLogin)).Task.ConfigureAwait(false);
         if (pw is not null)
         {
             var ui = (AuthUi)_auth.Ui;
-            using (ui.ProgressBox = await ProgressBox.Show().ConfigureAwait(false))
+            using (ui.ProgressBox = await ProgressBox.Show())
             {
                 ui.ProgressBox.DetailText = "Anmelden...";
                 ui.ProgressBox.DetailProgress = double.NaN;
@@ -83,15 +94,38 @@ sealed class KeeperVault : IVault, IDisposable
 
     public Task Logout() => _auth.Logout();
 
-    public Task Sync()
+    public async Task Sync() => await (await _vault.Value.ConfigureAwait(false)).SyncDown();
+
+    public async Task<ItemTemplate?> UpdateUris(string? uid)
     {
-        throw new NotImplementedException();
+        ItemTemplate? item = null;
+        using var progressBox = await ProgressBox.Show().ConfigureAwait(false);
+        progressBox.DetailText = "Einträge aktualisieren...";
+        var vault = await _vault.Value.ConfigureAwait(false);
+        await vault.SyncDown();
+        var records = vault.KeeperRecords as IReadOnlyCollection<KeeperRecord> ?? vault.KeeperRecords.ToList();
+        var prefix = $"{UriScheme}:";
+        foreach (var (record, idx) in records.Select((x,i)=>(x,i)))
+        {
+            progressBox.DetailProgress = (idx + 1.0) / records.Count;
+            if (record is not TypedRecord data)
+                continue;
+            if (item is null && data.Uid == uid)
+                item = ToItemTemplate(data);
+            var field = data.Custom.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.FieldLabel == UriFieldName && x.x.ObjectValue is string value && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            if (string.Equals(field.x?.Value.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var newField = new TypedField<string>("url", UriFieldName) { TypedValue = $"{prefix}{data.Uid}" };
+            if (field == default)
+                data.Custom.Add(newField);
+            else
+                data.Custom[field.i] = newField;
+            await vault.UpdateRecord(data);
+        }
+        return item;
     }
 
-    public Task<ItemTemplate?> UpdateUris(Guid guid = default)
-    {
-        throw new NotImplementedException();
-    }
+    static ItemTemplate ToItemTemplate(KeeperRecord record) => new() { Id = record.Uid };
 
     sealed class Factory : IVaultFactory
     {
@@ -153,6 +187,14 @@ sealed class KeeperVault : IVault, IDisposable
                 return false;
             await info.InvokePasswordActionDelegate(pw.GetAsClearText());
             return true;
+        }
+    }
+
+    sealed class VaultUi : IVaultUi
+    {
+        public Task<bool> Confirmation(string information)
+        {
+            return Application.Current.Dispatcher.InvokeAsync(() => MessageBox.Show(information, nameof(VaultCommander), MessageBoxButton.YesNo, MessageBoxImage.Question) is MessageBoxResult.Yes).Task;
         }
     }
 }

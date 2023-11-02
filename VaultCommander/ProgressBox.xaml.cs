@@ -60,10 +60,19 @@ sealed partial class ProgressBox : Window
 
     public static new Task<IViewModel> Show()
     {
-        ProgressBox box = new() { Owner = Application.Current.MainWindow };
+        //ProgressBox box = new() { Owner = Application.Current.MainWindow };
+        //TaskCompletionSource<IViewModel> tcs = new();
+        //box.Loaded += (sender, _) => tcs.SetResult(((ProgressBox)sender)._vm);
+        //box.Dispatcher.InvokeAsync(box.ShowDialog);
+        //return tcs.Task;
+
         TaskCompletionSource<IViewModel> tcs = new();
-        box.Loaded += (sender, _) => tcs.SetResult(((ProgressBox)sender)._vm);
-        box.Dispatcher.InvokeAsync(box.ShowDialog);
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            var window = new ProgressBox { Owner = Application.Current.MainWindow };
+            window.Loaded += (sender, _) => tcs.SetResult(((ProgressBox)sender)._vm);
+            window.ShowDialog();
+        });
         return tcs.Task;
     }
 }
