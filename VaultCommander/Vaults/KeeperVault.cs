@@ -129,12 +129,17 @@ sealed class KeeperVault : IVault, IDisposable
         {
             foreach (var field in fields)
             {
-                var name = field.Type == "login" ? nameof(IArgumentsUsername.Username) : (string.IsNullOrEmpty(field.FieldLabel) ? field.FieldName : field.FieldLabel);
-                yield return new(name, field switch
-                {
-                    TypedField<FieldTypeHost> host => string.IsNullOrEmpty(host.TypedValue.Port) ? host.TypedValue.HostName : $"{host.TypedValue.HostName}:{host.TypedValue.Port}",
-                    _ => field.Value
-                });
+                yield return new(
+                    field.Type switch
+                    {
+                        "login" => nameof(IArgumentsUsername.Username),
+                        _ => string.IsNullOrEmpty(field.FieldLabel) ? field.FieldName : field.FieldLabel
+                    },
+                    field switch
+                    {
+                        TypedField<FieldTypeHost> host => string.IsNullOrEmpty(host.TypedValue.Port) ? host.TypedValue.HostName : $"{host.TypedValue.HostName}:{host.TypedValue.Port}",
+                        _ => field.Value
+                    });
 
                 if (includeTotp && field.Type == "oneTimeCode")
                     yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(field.Value).Item1);
