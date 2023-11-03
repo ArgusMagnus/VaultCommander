@@ -94,7 +94,7 @@ sealed partial class MainWindow : Window
                 if (Debugger.IsAttached)
                     startInfo.ArgumentList.Add("/d");
                 using (var process = Process.Start(startInfo)) { }
-                OnMenuExitClicked(null, null);
+                await Close();
                 return;
             }
             catch (Exception)
@@ -175,40 +175,37 @@ sealed partial class MainWindow : Window
         static extern bool AddClipboardFormatListener(nint hwnd);
     }
 
-    protected override async void OnClosed(EventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
     {
-        base.OnClosed(e);
+        if (e.Cancel = _cancelClose)
+            Hide();
+    }
+
+    private new async Task Close()
+    {
+        Hide();
+
+        [DllImport("User32")]
+        static extern bool RemoveClipboardFormatListener(nint hwnd);
+        var source = (HwndSource)PresentationSource.FromVisual(this);
+        source.RemoveHook(WndProc);
+        RemoveClipboardFormatListener(source.Handle);
+
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         foreach (var vault in _vaults)
         {
             if (vault is IAsyncDisposable asyncDisposable)
-                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                await asyncDisposable.DisposeAsync();
             else if (vault is IDisposable disposable)
                 disposable.Dispose();
         }
-    }
 
-    protected override void OnClosing(CancelEventArgs e)
-    {
-        if (!(e.Cancel = _cancelClose))
-        {
-            [DllImport("User32")]
-            static extern bool RemoveClipboardFormatListener(nint hwnd);
-
-            var source = (HwndSource)PresentationSource.FromVisual(this);
-            source.RemoveHook(WndProc);
-            RemoveClipboardFormatListener(source.Handle);
-        }
-        base.OnClosing(e);
-        Hide();
-    }
-
-    private void OnMenuExitClicked(object? sender, RoutedEventArgs? e)
-    {
         _cancelClose = false;
-        Close();
+        base.Close();
     }
+
+    private async void OnMenuExitClicked(object? sender, RoutedEventArgs? e) => await Close();
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
