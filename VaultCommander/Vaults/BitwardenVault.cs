@@ -37,6 +37,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
         using var progressBox = await ProgressBox.Show();
         progressBox.StepText = "0 / 1";
+        progressBox.StepProgress = 0.5;
         progressBox.DetailText = "Bitwarden CLI herunterladen...";
 
         void OnProgress(double progress)
@@ -45,7 +46,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
             if (progress is 0.5)
             {
                 progressBox.StepText = "1 / 1";
-                progressBox.StepProgress = 0.5;
+                progressBox.StepProgress = 1;
                 progressBox.DetailText = "Bitwarden CLI installieren...";
             }
         }

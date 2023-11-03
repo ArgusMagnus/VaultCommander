@@ -64,6 +64,46 @@ sealed partial class MainWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-')[0], out var currentVersion) && releaseVersion > currentVersion)
+        {
+            using var progressBox = await ProgressBox.Show();
+            progressBox.StepText = "0 / 1";
+            progressBox.StepProgress = 0.5;
+            progressBox.DetailText = "Update herunterladen...";
+
+            void OnProgress(double progress)
+            {
+                progressBox.DetailProgress = progress * 2;
+                if (progress is 0.5)
+                {
+                    progressBox.StepText = "1 / 1";
+                    progressBox.StepProgress = 1;
+                    progressBox.DetailText = "Update installieren...";
+                }
+            }
+
+            var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            try
+            {
+                await Utils.DownloadRelease(release, dir, OnProgress);
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = Directory.EnumerateFiles(dir, Path.GetFileName(Environment.ProcessPath!)).First().Replace(".exe", $".{nameof(Terminal)}.exe"),
+                    ArgumentList = { nameof(Terminal.Verbs.Install), AppDomain.CurrentDomain.BaseDirectory, $"{Environment.ProcessId}" }
+                };
+                if (Debugger.IsAttached)
+                    startInfo.ArgumentList.Add("/d");
+                using (var process = Process.Start(startInfo)) { }
+                OnMenuExitClicked(null, null);
+                return;
+            }
+            catch (Exception)
+            {
+                Directory.Delete(dir, true);
+                throw;
+            }
+        }
+
         static MenuItem InsertAccountItem(MenuItem parent, MenuItem? beforeItem, IVault vault, StatusDto status)
         {
             var item = new MenuItem { Header = $"{status.UserEmail} ({vault.VaultName})" };

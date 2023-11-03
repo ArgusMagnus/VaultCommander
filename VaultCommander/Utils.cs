@@ -166,7 +166,7 @@ static class Utils
         httpClient.DefaultRequestHeaders.Accept.Clear();
         httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         httpClient.DefaultRequestHeaders.Add("User-Agent", nameof(VaultCommander));
-        return await httpClient.GetFromJsonAsync<ReleaseInfo>("https://api.github.com/repos/ArgusMagnus/BitwardenExtender/releases/latest");
+        return await httpClient.GetFromJsonAsync<ReleaseInfo>("https://api.github.com/repos/ArgusMagnus/VaultCommander/releases/latest");
     }
 
     public static async Task DownloadRelease(ReleaseInfo release, string destinationDirectory, Action<double>? progress)
