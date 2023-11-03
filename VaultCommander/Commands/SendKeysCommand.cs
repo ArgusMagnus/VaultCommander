@@ -63,8 +63,9 @@ sealed class SendKeysCommand : Command<SendKeysCommand.Arguments>
             }
         }
 
-        if (window != WindowHandle.Null)
-            window.Focus();
+        if (window == WindowHandle.Null)
+            return;
+        window.Focus();
         WinForms.SendKeys.SendWait(args.Keys);
     }
 }
