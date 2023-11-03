@@ -21,10 +21,17 @@ sealed partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         if (_mutex.WaitOne(0, true))
+        {
             base.OnStartup(e);
+            Current.MainWindow = new MainWindow(e.Args);
+            Current.MainWindow.Show();
+        }
         else
         {
-            MessageBox.Show("Die Anwendung läuft bereits.", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
+            if (e.Args.FirstOrDefault() is string cmd)
+                Clipboard.SetText(cmd);
+            else
+                MessageBox.Show("Die Anwendung läuft bereits.", nameof(VaultCommander), MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown();
         }
     }

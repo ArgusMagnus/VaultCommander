@@ -109,7 +109,7 @@ sealed class KeeperVault : IVault, IDisposable
             var field = data.Custom.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.FieldLabel == UriFieldName && x.x.ObjectValue is string value && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
             if (string.Equals(field.x?.Value.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
                 continue;
-            var newField = new TypedField<string>("url", UriFieldName) { TypedValue = $"{prefix}{data.Uid}" };
+            var newField = new TypedField<string>("text", UriFieldName) { TypedValue = $"{prefix}{data.Uid}" };
             if (field == default)
                 data.Custom.Insert(0, newField);
             else

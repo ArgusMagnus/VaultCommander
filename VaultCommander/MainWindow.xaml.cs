@@ -1,11 +1,10 @@
-﻿using System;
+﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
-using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -29,17 +28,19 @@ sealed partial class MainWindow : Window
     readonly WinForms.NotifyIcon _notifyIcon = new();
     readonly IReadOnlyDictionary<string, ICommand> _commands;
     readonly MainVM _vm = new();
+    readonly IReadOnlyList<IVault> _vaults = IVaultFactory.CreateVaults(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory));
+    readonly IReadOnlyDictionary<string, IVault> _vaultsByUriScheme;
+    readonly string[] _arguments;
+
     bool _cancelClose = true;
     CurrentWindowInformationWindow? _currentWindowInfoWindow;
 
-    readonly IReadOnlyList<IVault> _vaults = IVaultFactory.CreateVaults(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Terminal.Constants.DataDirectory));
-    readonly IReadOnlyDictionary<string, IVault> _vaultsByUriScheme;
-
-    public MainWindow()
+    public MainWindow(string[] arguments)
     {
         Title = nameof(VaultCommander);
         DataContext = _vm;
         _vaultsByUriScheme = _vaults.ToDictionary(x => x.UriScheme, StringComparer.OrdinalIgnoreCase);
+        _arguments = arguments;
 
         InitializeComponent();
         _notifyIcon.Text = Title;
@@ -59,7 +60,6 @@ sealed partial class MainWindow : Window
             .ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
 
         Loaded += OnLoaded;
-
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -147,6 +147,22 @@ sealed partial class MainWindow : Window
             };
             _menuItemLogin.Items.Add(menuItemLogin);
         }
+
+        foreach (var uri in _arguments)
+            await TryHandleVaultUri(uri, true);
+
+        if (_arguments is { Length: 0 })
+            await Task.WhenAll(_vaults.Select(x => Task.Run(() => RegisterUriHandlers(x.UriScheme))));
+
+        return;
+        static void RegisterUriHandlers(string scheme)
+        {
+            using var regKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{scheme}", true);
+            regKey.SetValue(null, $"URL: {scheme} protocol ({nameof(VaultCommander)})");
+            regKey.SetValue("URL Protocol", string.Empty);
+            using var subKey = regKey.CreateSubKey(@"shell\open\command", true);
+            subKey.SetValue(null, $@"""{Environment.ProcessPath}"" ""%1""");
+        }
     }
 
     private void OnNotifyIconClicked(object? sender, WinForms.MouseEventArgs e)
@@ -211,76 +227,83 @@ sealed partial class MainWindow : Window
     {
         const int WM_CLIPBOARDUPDATE = 0x031D;
 
-        if (msg is WM_CLIPBOARDUPDATE)
+        if (msg is WM_CLIPBOARDUPDATE && TryHandleVaultUri(Clipboard.GetText(), false).Result)
         {
-            var text = Clipboard.GetText();
-            var parts = Clipboard.GetText().Split(':', 2);
-            if (_vaultsByUriScheme.TryGetValue(parts[0], out var vault))
-            {
-                Clipboard.Clear();
-                OnClipboardCommand(vault, parts.ElementAtOrDefault(1));
-                handled = true;
-            }
+            Clipboard.Clear();
+            handled = true;
         }
 
         return nint.Zero;
     }
 
-    private async void OnClipboardCommand(IVault vault, string? uid)
+    private async Task<bool> TryHandleVaultUri(string uri, bool wait)
     {
-        foreach (Button button in _buttons.Children)
-            button.Click -= OnBwCommandClicked;
-        _buttons.Children.Clear();
-        _vm.SelectedEntry = null;
+        var parts = uri.Split(':', 2);
+        if (!_vaultsByUriScheme.TryGetValue(parts[0], out var vault))
+            return false;
 
-        if (string.IsNullOrEmpty(uid))
-            return;
+        var task = HandleUri(vault, parts.ElementAtOrDefault(1));
+        if (wait)
+            await task.ConfigureAwait(false);
+        return true;
 
-        static Point GetMousePosition()
+        async Task HandleUri(IVault vault, string? uid)
         {
-            var point = WinForms.Control.MousePosition;
-            return new(point.X, point.Y);
-        }
-        var pos = PresentationSource.FromVisual(this).CompositionTarget.TransformFromDevice.Transform(GetMousePosition());
-        pos.X -= ActualWidth / 2;
-        pos.Y -= ActualHeight / 2;
-        Left = pos.X;
-        Top = pos.Y;
-        Show();
-        Activate();
+            await Task.Yield();
+            foreach (Button button in _buttons.Children)
+                button.Click -= OnBwCommandClicked;
+            _buttons.Children.Clear();
+            _vm.SelectedEntry = null;
 
-        var status = await vault.GetStatus();
-        if (status is null || status.Status is Status.Unauthenticated)
-        {
-            status = await vault.Login();
-            if (status is null || status.Status is Status.Unauthenticated)
+            if (string.IsNullOrEmpty(uid))
                 return;
+
+            static Point GetMousePosition()
+            {
+                var point = WinForms.Control.MousePosition;
+                return new(point.X, point.Y);
+            }
+            var pos = PresentationSource.FromVisual(this).CompositionTarget.TransformFromDevice.Transform(GetMousePosition());
+            pos.X -= ActualWidth / 2;
+            pos.Y -= ActualHeight / 2;
+            Left = pos.X;
+            Top = pos.Y;
+            Show();
+            Activate();
+
+            var status = await vault.GetStatus();
+            if (status is null || status.Status is Status.Unauthenticated)
+            {
+                status = await vault.Login();
+                if (status is null || status.Status is Status.Unauthenticated)
+                    return;
+            }
+
+            Record? record = null;
+            try { record = await vault.GetItem(uid); }
+            catch { }
+
+            if (record?.Id != uid)
+                record = await vault.UpdateUris(uid);
+
+            if (record is null)
+            {
+                MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            _vm.SelectedEntry = new(record);
+            foreach (var field in record.Fields.Where(x => !string.IsNullOrEmpty(x.Value)))
+            {
+                var parts = field.Value!.Split(':', 2);
+                if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
+                    continue;
+                var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, record.Id, bwCommand, parts[1]) };
+                button.Click += OnBwCommandClicked;
+                _buttons.Children.Add(button);
+            }
         }
-
-        Record? record = null;
-        try { record = await vault.GetItem(uid); }
-        catch { }
-
-        if (record?.Id != uid)
-            record = await vault.UpdateUris(uid);
-
-        if (record is null)
-        {
-            MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        _vm.SelectedEntry = new(record);
-        foreach (var field in record.Fields.Where(x => !string.IsNullOrEmpty(x.Value)))
-        {
-            var parts = field.Value!.Split(':', 2);
-            if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
-                continue;
-            var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, record.Id, bwCommand, parts[1]) };
-            button.Click += OnBwCommandClicked;
-            _buttons.Children.Add(button);
-        }
-    }
+    }    
 
     sealed record ButtonTag(IVault Vault, string ItemId, ICommand Command, string Arguments);
 

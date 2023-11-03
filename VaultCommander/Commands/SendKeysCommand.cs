@@ -49,7 +49,18 @@ sealed class SendKeysCommand : Command<SendKeysCommand.Arguments>
         else
         {
             WindowHandle.FromWpfWindow(Application.Current.MainWindow).TryGetWindow(WindowHandle.GW.Next, out window);
-            while (window != WindowHandle.Null && (!window.IsVisible || window.Text is "Bitwarden") && window.TryGetWindow(WindowHandle.GW.Next, out window)) ;
+            while (window != WindowHandle.Null && IgnoreWindow(window) && window.TryGetWindow(WindowHandle.GW.Next, out window)) ;
+
+            static bool IgnoreWindow(in WindowHandle window)
+            {
+                if (!window.IsVisible)
+                    return true;
+                if (!window.TryGetText(out var text))
+                    return true;
+                if (text is "Bitwarden" || text.StartsWith("Keeper®"))
+                    return true;
+                return false;
+            }
         }
 
         if (window != WindowHandle.Null)
