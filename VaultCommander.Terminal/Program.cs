@@ -83,6 +83,13 @@ try
                 shortcut.Save();
 
                 using var process = Process.Start(exe);
+
+                shortcutPath = Path.Combine(Path.GetDirectoryName(shortcutPath)!, "$BitwardenExtender.lnk");
+                if (File.Exists(shortcutPath))
+                    File.Delete(shortcutPath);
+                shortcutPath = Path.Combine(Path.GetDirectoryName(shortcutPath)!, "BitwardenExtender.lnk");
+                if (File.Exists(shortcutPath))
+                    File.Delete(shortcutPath);
                 break;
             }
 
