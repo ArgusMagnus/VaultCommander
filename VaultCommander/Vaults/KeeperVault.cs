@@ -1,5 +1,6 @@
 ﻿using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Async;
+using KeeperSecurity.Commands;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
@@ -8,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -52,6 +54,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         {
             var vault = await _vault.Value.ConfigureAwait(false);
             var storage = (KeeperStorage)vault.Storage;
+            vault.Dispose();
             await storage.DisposeAsync();
         }
         _auth.Dispose();
@@ -61,10 +64,21 @@ sealed class KeeperVault : IVault, IAsyncDisposable
     {
         if (_auth.AuthContext is null)
             await Login().ConfigureAwait(false);
-        var storage = new KeeperStorage(_auth.Username, Path.Combine(_dataDirectory, "storage.db"));
+        var storage = new KeeperStorage(_auth.Username, Path.Combine(_dataDirectory, "storage.sqlite"));
         await storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
         await storage.Database.MigrateAsync();
-        return new(_auth, storage) { AutoSync = true, VaultUi = new VaultUi() };
+        var vault = new VaultOnline(_auth, storage) { AutoSync = true, VaultUi = new VaultUi() };
+        // await vault.SyncDown();
+
+
+        //var data = CryptoUtils.Base64UrlDecode("1VKZVsa2-W94vNrfrj50SuZ53ZOkexjna3wQ6eOgQIndAJarYVpi3S8ZPx2gBY5997QKJdLl3fvlpfJYPPRJbZWENyet3ZFA-nHPwG3SkIsFOXdslvOQJsslAX1ve3hS4RrdyVeB700tWUtuWYEzUVGWFNMWz4B6HvjyyIP-q41g8VUQQXZ_8PEj-KRgTjPoOMcWlHzMs3bU8PpQrJC_rmoI3jzCISS6zhlmofLLvM2Evo0PuBRRX3BGIfHdiaZxkSMMhckQJYhfVxbJ22CSOZFZS8W7-HzMYWfGRnWj40hYf10Zz7rLKCchjN0JrK2OlyuggMsKw4ZPwxR8eJVtp109OhSem83cE5SjoYf_U3VEberMV_3Gd8pgGcnJQYDNIFCxk6ftwGdFiUz4JjJDDJeovp7EVqnvuWHFJvuBFD4phQLDmmdskD7OaICo9r1SaoeA7hCn2pdToqHa7GTdRBB1lgS0Da5Be8ODDPFWe8_UO8D4339n5e1ySExFWv8sFdZQBuzH0NCmjELmBNRLCpCQZwvblJaiVGuLcQ9NBUygufTha49SA6zsHDZEEV8z-ms7sg87Wha44rN0edBu-sMseQmr5d3WZWEJWuV2p9keMZgNO0j-BuEvbZNK-u2qfnKSOHo2nSyWodtzEceoO-qdpSo6cgAXmzsZ7b7UmcvJ_BMFsJ4GxMkvWwA4ImDhb8dG0ijtm-l5vUV4L-N1Ghn1LYat9oqOLc8xUyrpSomE_mG4GcQeptewNt-oFljfbJ9sk8TOWTs3CSuQupxitQvm3modlfDiXl_sYAKORX0srRero0dv_z3jlh8-zGOK2D9y88jIZm8Ftf8dtt1v4B5kNv0l4RnBDhGJ4dUBUtGMQLvLmPPazvdjd_jC5isih-nWMxwam9JHrzuzZunTb04PVm7cHSQJULGw25jHG-i-qiQUox-0QvDrgy5pQ9jeocHSFMCfuWBW677Tz3bSJf_pSpJe_troyuFdQ8eGtm0hQHlTJAdNRbT2Cq3_AUjyzJIg9fat4oQ3lO_r");
+        //var key = CryptoUtils.DecryptAesV1(
+        //    CryptoUtils.Base64UrlDecode("1bm3lJZtyQp6ulZpgTINrrwr6Tz2j-qtJbqZKt7gtDhT65HK1Wyz4l74-LmPdR_EsJcggZCZVDNa78x6uSTzWQ"),
+        //    vault.ClientKey);
+        //var test = CryptoUtils.DecryptAesV2(data, key);
+        //var test2 = JsonUtils.ParseJson<RecordApplicationData>(test);
+
+        return vault;
     }
 
     public async Task<Record?> GetItem(string uid, bool includeTotp)
@@ -115,7 +129,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         await vault.SyncDown();
         var records = vault.KeeperRecords as IReadOnlyCollection<KeeperRecord> ?? vault.KeeperRecords.ToList();
         var prefix = $"{UriScheme}:";
-        foreach (var (record, idx) in records.Select((x,i)=>(x,i)))
+        foreach (var (record, idx) in records.Select((x, i) => (x, i)))
         {
             progressBox.DetailProgress = (idx + 1.0) / records.Count;
             if (record is not TypedRecord data)
@@ -123,7 +137,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
             if (item is null && data.Uid == uid)
                 item = ToRecord(data);
             var field = data.Custom.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.FieldLabel == UriFieldName && x.x.ObjectValue is string value && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-            if (string.Equals(field.x?.Value.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals((field.x?.ObjectValue as string)?.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
                 continue;
             var newField = new TypedField<string>("text", UriFieldName) { TypedValue = $"{prefix}{data.Uid}" };
             if (field == default)
@@ -331,21 +345,23 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         {
             base.OnModelCreating(modelBuilder);
 
-            ConfigureEntity(modelBuilder.Entity<RecordEntity>());
-            ConfigureEntity(modelBuilder.Entity<SharedFolderEntity>());
-            ConfigureEntity(modelBuilder.Entity<EnterpriseTeamEntity>());
-            ConfigureEntity(modelBuilder.Entity<NonSharedDataEntity>());
-            ConfigureEntity(modelBuilder.Entity<RecordMetadataEntity>());
-            ConfigureEntity(modelBuilder.Entity<SharedFolderKeyEntity>());
-            ConfigureEntity(modelBuilder.Entity<SharedFolderPermissionEntity>());
-            ConfigureEntity(modelBuilder.Entity<FolderEntity>());
-            ConfigureEntity(modelBuilder.Entity<FolderRecordLinkEntity>());
-            ConfigureEntity(modelBuilder.Entity<RecordTypeEntity>());
+            ConfigureEntity<IStorageRecord, RecordEntity>(modelBuilder);
+            ConfigureEntity<ISharedFolder, SharedFolderEntity>(modelBuilder);
+            ConfigureEntity<IEnterpriseTeam, EnterpriseTeamEntity>(modelBuilder);
+            ConfigureEntity<INonSharedData, NonSharedDataEntity>(modelBuilder);
+            ConfigureEntity<IRecordMetadata, RecordMetadataEntity>(modelBuilder);
+            ConfigureEntity<ISharedFolderKey, SharedFolderKeyEntity>(modelBuilder);
+            ConfigureEntity<ISharedFolderPermission, SharedFolderPermissionEntity>(modelBuilder);
+            ConfigureEntity<IFolder, FolderEntity>(modelBuilder);
+            ConfigureEntity<IFolderRecordLink, FolderRecordLinkEntity>(modelBuilder);
+            ConfigureEntity<IRecordType, RecordTypeEntity>(modelBuilder);
             modelBuilder.Entity<UserStorage>().HasKey(x => x.PersonalScopeUid);
 
-            static void ConfigureEntity<T>(EntityTypeBuilder<T> typeBuilder) where T : class
+            static void ConfigureEntity<I, T>(ModelBuilder modelBuilder) where T : class, I
             {
-                foreach (var columnName in typeof(T).GetProperties().Where(x => x.Name != nameof(IPersonalScopeUid.PersonalScopeUid) && x.GetCustomAttribute<SqlColumnAttribute>() is null))
+                var typeBuilder = modelBuilder.Entity<T>();
+                var properties = typeof(I).GetProperties().Select(x => x.Name).Append(nameof(IPersonalScopeUid.PersonalScopeUid)).ToHashSet();
+                foreach (var columnName in typeof(T).GetProperties().Where(x => !properties.Contains(x.Name)))
                     typeBuilder.Ignore(columnName.Name);
 
                 var table = typeof(T).BaseType?.GetCustomAttribute<SqlTableAttribute>() ?? throw new InvalidOperationException();
@@ -375,7 +391,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
         sealed class EntityStorage<I, T> : IEntityStorage<I>
             where I : IUid
-            where T : class, I, IEntityCopy<I>, IPersonalScopeUid, new()
+            where T : class, I, IPersonalScopeUid, IEntityCopy<I>, new()
         {
             readonly DbContext _dbContext;
             readonly DbSet<T> _set;
@@ -410,11 +426,11 @@ sealed class KeeperVault : IVault, IAsyncDisposable
                 foreach (var value in entities)
                 {
                     if (_set.Find(_personalScopeUid, value.Uid) is T entity)
-                        entity.CopyFields(value);
+                        Utils.CopyProperties(value, entity);
                     else
                     {
-                        entity = new T();
-                        entity.CopyFields(value);
+                        entity = new();
+                        Utils.CopyProperties(value, entity);
                         entity.PersonalScopeUid = _personalScopeUid;
                         _set.Add(entity);
                     }
@@ -425,7 +441,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
         sealed class PredicateStorage<I, T> : IPredicateStorage<I>
             where I : IUidLink
-            where T : class, I, IEntityCopy<I>, IPersonalScopeUid, new()
+            where T : class, I, IPersonalScopeUid, IEntityCopy<I>, new()
         {
             readonly DbContext _dbContext;
             readonly DbSet<T> _set;
@@ -437,6 +453,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
                 _personalScopeUid = dbContext.PersonalScopeUid;
                 _set = set;
             }
+
             public void DeleteLinks(IEnumerable<IUidLink> links)
             {
                 foreach (var link in links)
@@ -481,11 +498,11 @@ sealed class KeeperVault : IVault, IAsyncDisposable
                 foreach (var value in entities)
                 {
                     if (_set.Find(_personalScopeUid, value.SubjectUid, value.ObjectUid) is T entity)
-                        entity.CopyFields(value);
+                        Utils.CopyProperties(value, entity);
                     else
                     {
-                        entity = new T();
-                        entity.CopyFields(value);
+                        entity = new();
+                        Utils.CopyProperties(value, entity);
                         entity.PersonalScopeUid = _personalScopeUid;
                         _set.Add(entity);
                     }
