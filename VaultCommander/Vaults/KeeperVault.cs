@@ -1,20 +1,16 @@
 ﻿using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Async;
-using KeeperSecurity.Commands;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Security.Cryptography;
-using System.Security.Cryptography.Pkcs;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +31,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
     readonly string _dataDirectory;
     readonly Auth _auth;
+    readonly KeeperStorage _storage;
     readonly Lazy<Task<VaultOnline>> _vault;
 
     KeeperVault(string dataDirectoryRoot)
@@ -47,6 +44,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         }));
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
         _vault = new(VaultFactory);
+        _storage = new KeeperStorage(_auth.Storage.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
     }
 
     public async ValueTask DisposeAsync()
@@ -54,9 +52,8 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         if (_vault.IsValueCreated)
         {
             var vault = await _vault.Value.ConfigureAwait(false);
-            var storage = (KeeperStorage)vault.Storage;
             vault.Dispose();
-            await storage.DisposeAsync();
+            await _storage.DisposeAsync();
         }
         _auth.Dispose();
     }
@@ -65,10 +62,8 @@ sealed class KeeperVault : IVault, IAsyncDisposable
     {
         if (_auth.AuthContext is null)
             await Login().ConfigureAwait(false);
-        var storage = new KeeperStorage(_auth.Username, Path.Combine(_dataDirectory, "storage.sqlite"));
-        await storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
-        await storage.Database.MigrateAsync();
-        var vault = new VaultOnline(_auth, storage) { AutoSync = true, VaultUi = new VaultUi() };
+        var vault = new VaultOnline(_auth, _storage) { AutoSync = true, VaultUi = new VaultUi() };
+        await vault.SyncDown();
         return vault;
     }
 
@@ -80,8 +75,11 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
     public Task<StatusDto?> GetStatus()
     {
-        var status = _auth.IsAuthenticated() ? Status.Unlocked :
-            (string.IsNullOrEmpty(_auth.Storage.LastLogin) ? Status.Unauthenticated : Status.Locked);
+        var status = Status.Unauthenticated;
+        if (_auth.IsAuthenticated())
+            status = Status.Unlocked;
+        else if (!string.IsNullOrEmpty(_auth.Storage.LastLogin))
+            status = Status.Locked;
         return Task.FromResult<StatusDto?>(new(_auth.Storage.LastServer, null, _auth.Storage.LastLogin, null, status));
     }
 
@@ -101,7 +99,16 @@ sealed class KeeperVault : IVault, IAsyncDisposable
             {
                 ui.ProgressBox.DetailText = "Anmelden...";
                 ui.ProgressBox.DetailProgress = double.NaN;
-                await _auth.Login(user, pw.GetAsClearText());
+                try
+                {
+                    await _auth.Login(user, pw.GetAsClearText());
+                    _storage.PersonalScopeUid = _auth.Username;
+                    //_storage.SetPasswordHashAndClientKey(CryptoUtils.DeriveV1KeyHash(pw.GetAsClearText(), null, 1), _auth.AuthContext.ClientKey);
+                }
+                catch (Exception)
+                {
+                    throw;
+                }
             }
         }
         return await GetStatus();
@@ -263,24 +270,39 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
     sealed class KeeperStorage : DbContext, IKeeperStorage
     {
-        public string PersonalScopeUid { get; }
-
         private DbSet<UserStorage> userStorage { get; init; } = null!;
-        public long Revision
+        private UserStorage _userStorage;
+
+        public string PersonalScopeUid
         {
-            get => userStorage.Find(PersonalScopeUid)?.Revision ?? 0;
+            get => _userStorage.PersonalScopeUid;
+            [MemberNotNull(nameof(_userStorage))]
             set
             {
-                if (userStorage.Find(PersonalScopeUid) is UserStorage entity)
-                    entity.Revision = value;
-                else
-                {
-                    entity = new() { PersonalScopeUid = PersonalScopeUid, Revision = value };
-                    userStorage.Add(entity);
-                }
+                _userStorage = userStorage.Find(value) ?? userStorage.Add(new() { PersonalScopeUid = value }).Entity;
                 SaveChanges();
             }
         }
+
+        public long Revision
+        {
+            get => _userStorage.Revision;
+            set
+            {
+                _userStorage.Revision = value;
+                SaveChanges();
+            }
+        }
+
+        //public byte[]? PasswordHash=> _userStorage.PasswordHash is null ? null : ProtectedData.Unprotect(_userStorage.PasswordHash, null, DataProtectionScope.CurrentUser);
+        //public byte[]? ClientKey => _userStorage.ClientKey is null ? null : ProtectedData.Unprotect(_userStorage.ClientKey, null, DataProtectionScope.CurrentUser);
+
+        //public void SetPasswordHashAndClientKey(byte[]? passwordHash, byte[]? clientKey)
+        //{
+        //    _userStorage.PasswordHash = passwordHash is null ? null : ProtectedData.Protect(passwordHash, null, DataProtectionScope.CurrentUser);
+        //    _userStorage.ClientKey = clientKey is null ? null : ProtectedData.Protect(clientKey, null, DataProtectionScope.CurrentUser);
+        //    SaveChanges();
+        //}
 
         private DbSet<RecordEntity> records { get; init; } = null!;
         public IEntityStorage<IStorageRecord> Records { get; }
@@ -314,10 +336,10 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
         readonly string _dbFilename;
 
-        public KeeperStorage(string personalScopeUid, string dbFilename)
+        public KeeperStorage(string? personalScopeUid, string dbFilename)
         {
-            PersonalScopeUid = personalScopeUid;
             _dbFilename = dbFilename;
+            PersonalScopeUid = personalScopeUid ?? string.Empty;
             Records = new EntityStorage<IStorageRecord, RecordEntity>(this, records);
             SharedFolders = new EntityStorage<ISharedFolder, SharedFolderEntity>(this, sharedFolders);
             Teams = new EntityStorage<IEnterpriseTeam, EnterpriseTeamEntity>(this, teams);
@@ -398,6 +420,8 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         {
             public string PersonalScopeUid { get; set; } = null!;
             public long Revision { get; set; }
+            //public byte[]? PasswordHash { get; set; }
+            //public byte[]? ClientKey { get; set; }
         }
 
         interface IEntity
