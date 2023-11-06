@@ -1,12 +1,18 @@
 ﻿using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Async;
+using KeeperSecurity.Commands;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -16,7 +22,7 @@ using VaultCommander.Commands;
 
 namespace VaultCommander.Vaults;
 
-sealed class KeeperVault : IVault, IDisposable
+sealed class KeeperVault : IVault, IAsyncDisposable
 {
     // https://keeper-security.github.io/gitbook-keeper-sdk/CSharp/html/R_Project_Documentation.htm
 
@@ -42,13 +48,27 @@ sealed class KeeperVault : IVault, IDisposable
         _vault = new(VaultFactory);
     }
 
-    public void Dispose() => _auth.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        if (_vault.IsValueCreated)
+        {
+            var vault = await _vault.Value.ConfigureAwait(false);
+            var storage = (KeeperStorage)vault.Storage;
+            vault.Dispose();
+            await storage.DisposeAsync();
+        }
+        _auth.Dispose();
+    }
 
     private async Task<VaultOnline> VaultFactory()
     {
         if (_auth.AuthContext is null)
             await Login().ConfigureAwait(false);
-        return new(_auth) { AutoSync = true, VaultUi = new VaultUi() };
+        var storage = new KeeperStorage(_auth.Username, Path.Combine(_dataDirectory, "storage.sqlite"));
+        await storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
+        await storage.Database.MigrateAsync();
+        var vault = new VaultOnline(_auth, storage) { AutoSync = true, VaultUi = new VaultUi() };
+        return vault;
     }
 
     public async Task<Record?> GetItem(string uid, bool includeTotp)
@@ -86,7 +106,23 @@ sealed class KeeperVault : IVault, IDisposable
         return await GetStatus();
     }
 
-    public Task Logout() => _auth.Logout();
+    public Task Logout()
+    {
+        _auth.Logout();
+        if (Directory.Exists(_dataDirectory))
+        {
+            try { Directory.Delete(_dataDirectory, true); }
+            catch
+            {
+                foreach (var file in Directory.EnumerateFiles(_dataDirectory))
+                {
+                    try { File.Delete(file); }
+                    catch { }
+                }
+            }
+        }
+        return Task.CompletedTask;
+    }
 
     public async Task Sync() => await (await _vault.Value.ConfigureAwait(false)).SyncDown();
 
@@ -99,7 +135,7 @@ sealed class KeeperVault : IVault, IDisposable
         await vault.SyncDown();
         var records = vault.KeeperRecords as IReadOnlyCollection<KeeperRecord> ?? vault.KeeperRecords.ToList();
         var prefix = $"{UriScheme}:";
-        foreach (var (record, idx) in records.Select((x,i)=>(x,i)))
+        foreach (var (record, idx) in records.Select((x, i) => (x, i)))
         {
             progressBox.DetailProgress = (idx + 1.0) / records.Count;
             if (record is not TypedRecord data)
@@ -107,7 +143,7 @@ sealed class KeeperVault : IVault, IDisposable
             if (item is null && data.Uid == uid)
                 item = ToRecord(data);
             var field = data.Custom.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.FieldLabel == UriFieldName && x.x.ObjectValue is string value && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-            if (string.Equals(field.x?.Value.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals((field.x?.ObjectValue as string)?.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
                 continue;
             var newField = new TypedField<string>("text", UriFieldName) { TypedValue = $"{prefix}{data.Uid}" };
             if (field == default)
@@ -215,6 +251,270 @@ sealed class KeeperVault : IVault, IDisposable
         public Task<bool> Confirmation(string information)
         {
             return Application.Current.Dispatcher.InvokeAsync(() => MessageBox.Show(information, nameof(VaultCommander), MessageBoxButton.YesNo, MessageBoxImage.Question) is MessageBoxResult.Yes).Task;
+        }
+    }
+
+    sealed class KeeperStorage : DbContext, IKeeperStorage
+    {
+        public string PersonalScopeUid { get; }
+
+        private DbSet<UserStorage> userStorage { get; init; } = null!;
+        public long Revision
+        {
+            get => userStorage.Find(PersonalScopeUid)?.Revision ?? 0;
+            set
+            {
+                if (userStorage.Find(PersonalScopeUid) is UserStorage entity)
+                    entity.Revision = value;
+                else
+                {
+                    entity = new() { PersonalScopeUid = PersonalScopeUid, Revision = value };
+                    userStorage.Add(entity);
+                }
+                SaveChanges();
+            }
+        }
+
+        private DbSet<RecordEntity> records { get; init; } = null!;
+        public IEntityStorage<IStorageRecord> Records { get; }
+
+        private DbSet<SharedFolderEntity> sharedFolders { get; init; } = null!;
+        public IEntityStorage<ISharedFolder> SharedFolders { get; }
+
+        private DbSet<EnterpriseTeamEntity> teams { get; init; } = null!;
+        public IEntityStorage<IEnterpriseTeam> Teams { get; }
+
+        private DbSet<NonSharedDataEntity> nonSharedData { get; init; } = null!;
+        public IEntityStorage<INonSharedData> NonSharedData { get; }
+
+        private DbSet<RecordMetadataEntity> recordKeys { get; init; } = null!;
+        public IPredicateStorage<IRecordMetadata> RecordKeys { get; }
+
+        private DbSet<SharedFolderKeyEntity> sharedFolderKeys { get;init; } = null!;
+        public IPredicateStorage<ISharedFolderKey> SharedFolderKeys { get; }
+
+        private DbSet<SharedFolderPermissionEntity> sharedFolderPermissions { get; init; } = null!;
+        public IPredicateStorage<ISharedFolderPermission> SharedFolderPermissions { get; }
+
+        private DbSet<FolderEntity> folders { get; init; } = null!;
+        public IEntityStorage<IFolder> Folders { get; }
+
+        private DbSet<FolderRecordLinkEntity> folderRecords { get; init; } = null!;
+        public IPredicateStorage<IFolderRecordLink> FolderRecords { get; }
+
+        private DbSet<RecordTypeEntity> recordTypes { get; init; } = null!;
+        public IEntityStorage<IRecordType> RecordTypes { get; }
+
+        readonly string _dbFilename;
+
+        public KeeperStorage(string personalScopeUid, string dbFilename)
+        {
+            PersonalScopeUid = personalScopeUid;
+            _dbFilename = dbFilename;
+            Records = new EntityStorage<IStorageRecord, RecordEntity>(this, records);
+            SharedFolders = new EntityStorage<ISharedFolder, SharedFolderEntity>(this, sharedFolders);
+            Teams = new EntityStorage<IEnterpriseTeam, EnterpriseTeamEntity>(this, teams);
+            NonSharedData = new EntityStorage<INonSharedData, NonSharedDataEntity>(this, nonSharedData);
+            RecordKeys = new PredicateStorage<IRecordMetadata, RecordMetadataEntity>(this, recordKeys);
+            SharedFolderKeys = new PredicateStorage<ISharedFolderKey, SharedFolderKeyEntity>(this, sharedFolderKeys);
+            SharedFolderPermissions = new PredicateStorage<ISharedFolderPermission, SharedFolderPermissionEntity>(this, sharedFolderPermissions);
+            Folders = new EntityStorage<IFolder, FolderEntity>(this, folders);
+            FolderRecords = new PredicateStorage<IFolderRecordLink, FolderRecordLinkEntity>(this, folderRecords);
+            RecordTypes = new EntityStorage<IRecordType, RecordTypeEntity>(this, recordTypes);
+        }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseSqlite($"Data Source={_dbFilename}");
+            base.OnConfiguring(optionsBuilder);
+        }
+
+        void IKeeperStorage.Clear()
+        {
+            void Clear<T>(DbSet<T> set) where T : class, IPersonalScopeUid
+                => set.RemoveRange(set.Where(x => x.PersonalScopeUid == PersonalScopeUid).ToList());
+
+            Clear(records);
+            Clear(sharedFolders);
+            Clear(teams);
+            Clear(nonSharedData);
+            Clear(recordKeys);
+            Clear(sharedFolderKeys);
+            Clear(sharedFolderPermissions);
+            Clear(folders);
+            Clear(folderRecords);
+            Clear(recordTypes);
+            SaveChanges();
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            ConfigureEntity<IStorageRecord, RecordEntity>(modelBuilder);
+            ConfigureEntity<ISharedFolder, SharedFolderEntity>(modelBuilder);
+            ConfigureEntity<IEnterpriseTeam, EnterpriseTeamEntity>(modelBuilder);
+            ConfigureEntity<INonSharedData, NonSharedDataEntity>(modelBuilder);
+            ConfigureEntity<IRecordMetadata, RecordMetadataEntity>(modelBuilder);
+            ConfigureEntity<ISharedFolderKey, SharedFolderKeyEntity>(modelBuilder);
+            ConfigureEntity<ISharedFolderPermission, SharedFolderPermissionEntity>(modelBuilder);
+            ConfigureEntity<IFolder, FolderEntity>(modelBuilder);
+            ConfigureEntity<IFolderRecordLink, FolderRecordLinkEntity>(modelBuilder);
+            ConfigureEntity<IRecordType, RecordTypeEntity>(modelBuilder);
+            modelBuilder.Entity<UserStorage>().HasKey(x => x.PersonalScopeUid);
+
+            static void ConfigureEntity<I, T>(ModelBuilder modelBuilder) where T : class, I
+            {
+                var typeBuilder = modelBuilder.Entity<T>();
+                var properties = typeof(I).GetProperties().Select(x => x.Name).Append(nameof(IPersonalScopeUid.PersonalScopeUid)).ToHashSet();
+                foreach (var columnName in typeof(T).GetProperties().Where(x => !properties.Contains(x.Name)))
+                    typeBuilder.Ignore(columnName.Name);
+
+                var table = typeof(T).BaseType?.GetCustomAttribute<SqlTableAttribute>() ?? throw new InvalidOperationException();
+                typeBuilder
+                    .ToTable(table.Name)
+                    .HasKey(table.PrimaryKey.Prepend(nameof(IPersonalScopeUid.PersonalScopeUid)).ToArray());
+            }
+        }
+
+        sealed class UserStorage : IPersonalScopeUid
+        {
+            public string PersonalScopeUid { get; set; } = null!;
+            public long Revision { get; set; }
+        }
+
+        interface IPersonalScopeUid { public string PersonalScopeUid { get; set; } }
+        sealed class RecordEntity : ExternalRecord, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class SharedFolderEntity : ExternalSharedFolder, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class EnterpriseTeamEntity : ExternalEnterpriseTeam, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class NonSharedDataEntity : ExternalNonSharedData, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class RecordMetadataEntity : ExternalRecordMetadata, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class SharedFolderKeyEntity : ExternalSharedFolderKey, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class SharedFolderPermissionEntity : ExternalSharedFolderPermission, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class FolderEntity : ExternalFolder, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class FolderRecordLinkEntity : ExternalFolderRecordLink, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+        sealed class RecordTypeEntity : ExternalRecordType, IPersonalScopeUid { public string PersonalScopeUid { get; set; } = null!; }
+
+        sealed class EntityStorage<I, T> : IEntityStorage<I>
+            where I : IUid
+            where T : class, I, IPersonalScopeUid, IEntityCopy<I>, new()
+        {
+            readonly DbContext _dbContext;
+            readonly DbSet<T> _set;
+            readonly string _personalScopeUid;
+
+            public EntityStorage(KeeperStorage dbContext, DbSet<T> set)
+            {
+                _dbContext = dbContext;
+                _personalScopeUid = dbContext.PersonalScopeUid;
+                _set = set;
+            }
+
+            public void DeleteUids(IEnumerable<string> uids)
+            {
+                var remove = _set.Where(x => x.PersonalScopeUid == _personalScopeUid && uids.Contains(x.Uid)).ToList();
+                _set.RemoveRange(remove);
+                _dbContext.SaveChanges();
+            }
+
+            public IEnumerable<I> GetAll()
+            {
+                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid);
+            }
+
+            public I GetEntity(string uid)
+            {
+                return _set.Find(_personalScopeUid, uid)!;
+            }
+
+            public void PutEntities(IEnumerable<I> entities)
+            {
+                foreach (var value in entities)
+                {
+                    if (_set.Find(_personalScopeUid, value.Uid) is T entity)
+                        Utils.CopyProperties(value, entity);
+                    else
+                    {
+                        entity = new();
+                        Utils.CopyProperties(value, entity);
+                        entity.PersonalScopeUid = _personalScopeUid;
+                        _set.Add(entity);
+                    }
+                }
+                _dbContext.SaveChanges();
+            }
+        }
+
+        sealed class PredicateStorage<I, T> : IPredicateStorage<I>
+            where I : IUidLink
+            where T : class, I, IPersonalScopeUid, IEntityCopy<I>, new()
+        {
+            readonly DbContext _dbContext;
+            readonly DbSet<T> _set;
+            readonly string _personalScopeUid;
+
+            public PredicateStorage(KeeperStorage dbContext, DbSet<T> set)
+            {
+                _dbContext = dbContext;
+                _personalScopeUid = dbContext.PersonalScopeUid;
+                _set = set;
+            }
+
+            public void DeleteLinks(IEnumerable<IUidLink> links)
+            {
+                foreach (var link in links)
+                {
+                    if (_set.Find(_personalScopeUid, link.SubjectUid, link.ObjectUid) is T entity)
+                        _set.Remove(entity);
+                }
+                _dbContext.SaveChanges();
+            }
+
+            public void DeleteLinksForObjects(IEnumerable<string> objectUids)
+            {
+                var remove = _set.Where(x => x.PersonalScopeUid == _personalScopeUid && objectUids.Contains(x.ObjectUid)).ToList();
+                _set.RemoveRange(remove);
+                _dbContext.SaveChanges();
+            }
+
+            public void DeleteLinksForSubjects(IEnumerable<string> subjectUids)
+            {
+                var remove = _set.Where(x => x.PersonalScopeUid == _personalScopeUid && subjectUids.Contains(x.SubjectUid)).ToList();
+                _set.RemoveRange(remove);
+                _dbContext.SaveChanges();
+            }
+
+            public IEnumerable<I> GetAllLinks()
+            {
+                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid);
+            }
+
+            public IEnumerable<I> GetLinksForObject(string objectUid)
+            {
+                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid && x.ObjectUid == objectUid);
+            }
+
+            public IEnumerable<I> GetLinksForSubject(string subjectUid)
+            {
+                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid && x.SubjectUid == subjectUid);
+            }
+
+            public void PutLinks(IEnumerable<I> entities)
+            {
+                foreach (var value in entities)
+                {
+                    if (_set.Find(_personalScopeUid, value.SubjectUid, value.ObjectUid) is T entity)
+                        Utils.CopyProperties(value, entity);
+                    else
+                    {
+                        entity = new();
+                        Utils.CopyProperties(value, entity);
+                        entity.PersonalScopeUid = _personalScopeUid;
+                        _set.Add(entity);
+                    }
+                }
+                _dbContext.SaveChanges();
+            }
         }
     }
 }
