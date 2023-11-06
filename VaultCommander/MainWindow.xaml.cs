@@ -104,7 +104,7 @@ sealed partial class MainWindow : Window
             }
         }
 
-        static MenuItem InsertAccountItem(MenuItem parent, MenuItem? beforeItem, IVault vault, StatusDto status)
+        static MenuItem InsertAccountItem(MenuItem parent, MenuItem? beforeItem, IVault vault, StatusDto status, IEnumerable<string> commandSchemes)
         {
             var item = new MenuItem { Header = $"{status.UserEmail} ({vault.VaultName})" };
             if (beforeItem is not null)
@@ -116,7 +116,7 @@ sealed partial class MainWindow : Window
             subItem.Click += async (_, _) => await vault.Sync();
             item.Items.Add(subItem);
             subItem = new() { Header = "Uris updaten" };
-            subItem.Click += async (_, _) => await vault.UpdateUris();
+            subItem.Click += async (_, _) => await vault.UpdateUris(commandSchemes);
             item.Items.Add(subItem);
             subItem = new() { Header = "Abmelden" };
             subItem.Click += async (_, _) =>
@@ -133,7 +133,7 @@ sealed partial class MainWindow : Window
         {
             var status = await vault.Initialize();
             if (status is not null && status.Status is not Status.Unauthenticated)
-                InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
+                InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status, _commands.Keys);
 
             var menuItemLogin = new MenuItem { Header = $"{vault.VaultName}..." };
             menuItemLogin.Click += async (_, _) =>
@@ -141,7 +141,7 @@ sealed partial class MainWindow : Window
                 var status = await vault.Login();
                 if (status is not null && status.Status is not Status.Unauthenticated)
                 {
-                    InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status);
+                    InsertAccountItem(_menuItemAccounts, _menuItemLogin, vault, status, _commands.Keys);
                     //menuItemLogin.IsEnabled = false;
                 }
             };
@@ -284,7 +284,7 @@ sealed partial class MainWindow : Window
             catch { }
 
             if (record?.Id != uid)
-                record = await vault.UpdateUris(uid);
+                record = await vault.UpdateUris(_commands.Keys, uid);
 
             if (record is null)
             {

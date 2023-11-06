@@ -98,25 +98,30 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
     public async Task Sync() => await UseApi(api => api.Sync());
 
-    public async Task<Record?> UpdateUris(string? uid)
+    public async Task<Record?> UpdateUris(IEnumerable<string> validCommandSchemes, string? uid)
     {
         using var progressBox = await ProgressBox.Show();
         progressBox.DetailText = "Einträge aktualisieren...";
-        var (record, count) = await UseApi(async api =>
+        return await UseApi(async api =>
         {
             await api.Sync();
             Record? record = null;
-            var count = 0;
             var itemsDto = await api.GetItems();
             if (itemsDto?.Success is not true || itemsDto.Data?.Data is null)
-                return (record, count);
+                return record;
 
             var prefix = $"{UriScheme}:";
+            validCommandSchemes = validCommandSchemes.Select(x => $"{x}:").ToList();
             foreach (var (data, idx) in itemsDto.Data.Data.Select((x,i) => (x,i)))
             {
                 progressBox.DetailProgress = (idx + 1.0) / itemsDto.Data.Data.Count;
                 if (record is null && data.Id == uid)
                     record = ToRecord(data);
+
+                var hasCommandField = data.Fields.Any(x => validCommandSchemes.Any(y => x.Value?.StartsWith(y, StringComparison.OrdinalIgnoreCase) is true));
+                if (!hasCommandField)
+                    continue;
+
                 var element = data.Fields.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.Name == UriFieldName);
                 if (data.Login is not null)
                 {
@@ -142,12 +147,10 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
                         data.Fields[element.i] = newField;
                 }
                 await api.PutItem(data);
-                count++;
             }
 
-            return (record, count);
+            return record;
         });
-        return record;
     }
 
     public async Task Logout()

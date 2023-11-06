@@ -126,7 +126,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
 
     public async Task Sync() => await (await _vault.Value.ConfigureAwait(false)).SyncDown();
 
-    public async Task<Record?> UpdateUris(string? uid)
+    public async Task<Record?> UpdateUris(IEnumerable<string> validCommandSchemes, string? uid)
     {
         Record? item = null;
         using var progressBox = await ProgressBox.Show().ConfigureAwait(false);
@@ -135,6 +135,7 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         await vault.SyncDown();
         var records = vault.KeeperRecords as IReadOnlyCollection<KeeperRecord> ?? vault.KeeperRecords.ToList();
         var prefix = $"{UriScheme}:";
+        validCommandSchemes = validCommandSchemes.Select(x => $"{x}:").ToList();
         foreach (var (record, idx) in records.Select((x, i) => (x, i)))
         {
             progressBox.DetailProgress = (idx + 1.0) / records.Count;
@@ -142,6 +143,11 @@ sealed class KeeperVault : IVault, IAsyncDisposable
                 continue;
             if (item is null && data.Uid == uid)
                 item = ToRecord(data);
+
+            var hasCommandField = data.Custom.Any(x => validCommandSchemes.Any(y => x.Value?.StartsWith(y, StringComparison.OrdinalIgnoreCase) is true));
+            if (!hasCommandField)
+                continue;
+
             var field = data.Custom.Select((x, i) => (x, i)).FirstOrDefault(x => x.x.FieldLabel == UriFieldName && x.x.ObjectValue is string value && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
             if (string.Equals((field.x?.ObjectValue as string)?.Substring(prefix.Length), data.Uid, StringComparison.OrdinalIgnoreCase))
                 continue;
