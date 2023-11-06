@@ -68,16 +68,6 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         await storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
         await storage.Database.MigrateAsync();
         var vault = new VaultOnline(_auth, storage) { AutoSync = true, VaultUi = new VaultUi() };
-        // await vault.SyncDown();
-
-
-        //var data = CryptoUtils.Base64UrlDecode("1VKZVsa2-W94vNrfrj50SuZ53ZOkexjna3wQ6eOgQIndAJarYVpi3S8ZPx2gBY5997QKJdLl3fvlpfJYPPRJbZWENyet3ZFA-nHPwG3SkIsFOXdslvOQJsslAX1ve3hS4RrdyVeB700tWUtuWYEzUVGWFNMWz4B6HvjyyIP-q41g8VUQQXZ_8PEj-KRgTjPoOMcWlHzMs3bU8PpQrJC_rmoI3jzCISS6zhlmofLLvM2Evo0PuBRRX3BGIfHdiaZxkSMMhckQJYhfVxbJ22CSOZFZS8W7-HzMYWfGRnWj40hYf10Zz7rLKCchjN0JrK2OlyuggMsKw4ZPwxR8eJVtp109OhSem83cE5SjoYf_U3VEberMV_3Gd8pgGcnJQYDNIFCxk6ftwGdFiUz4JjJDDJeovp7EVqnvuWHFJvuBFD4phQLDmmdskD7OaICo9r1SaoeA7hCn2pdToqHa7GTdRBB1lgS0Da5Be8ODDPFWe8_UO8D4339n5e1ySExFWv8sFdZQBuzH0NCmjELmBNRLCpCQZwvblJaiVGuLcQ9NBUygufTha49SA6zsHDZEEV8z-ms7sg87Wha44rN0edBu-sMseQmr5d3WZWEJWuV2p9keMZgNO0j-BuEvbZNK-u2qfnKSOHo2nSyWodtzEceoO-qdpSo6cgAXmzsZ7b7UmcvJ_BMFsJ4GxMkvWwA4ImDhb8dG0ijtm-l5vUV4L-N1Ghn1LYat9oqOLc8xUyrpSomE_mG4GcQeptewNt-oFljfbJ9sk8TOWTs3CSuQupxitQvm3modlfDiXl_sYAKORX0srRero0dv_z3jlh8-zGOK2D9y88jIZm8Ftf8dtt1v4B5kNv0l4RnBDhGJ4dUBUtGMQLvLmPPazvdjd_jC5isih-nWMxwam9JHrzuzZunTb04PVm7cHSQJULGw25jHG-i-qiQUox-0QvDrgy5pQ9jeocHSFMCfuWBW677Tz3bSJf_pSpJe_troyuFdQ8eGtm0hQHlTJAdNRbT2Cq3_AUjyzJIg9fat4oQ3lO_r");
-        //var key = CryptoUtils.DecryptAesV1(
-        //    CryptoUtils.Base64UrlDecode("1bm3lJZtyQp6ulZpgTINrrwr6Tz2j-qtJbqZKt7gtDhT65HK1Wyz4l74-LmPdR_EsJcggZCZVDNa78x6uSTzWQ"),
-        //    vault.ClientKey);
-        //var test = CryptoUtils.DecryptAesV2(data, key);
-        //var test2 = JsonUtils.ParseJson<RecordApplicationData>(test);
-
         return vault;
     }
 
@@ -116,7 +106,23 @@ sealed class KeeperVault : IVault, IAsyncDisposable
         return await GetStatus();
     }
 
-    public Task Logout() => _auth.Logout();
+    public Task Logout()
+    {
+        _auth.Logout();
+        if (Directory.Exists(_dataDirectory))
+        {
+            try { Directory.Delete(_dataDirectory, true); }
+            catch
+            {
+                foreach (var file in Directory.EnumerateFiles(_dataDirectory))
+                {
+                    try { File.Delete(file); }
+                    catch { }
+                }
+            }
+        }
+        return Task.CompletedTask;
+    }
 
     public async Task Sync() => await (await _vault.Value.ConfigureAwait(false)).SyncDown();
 
