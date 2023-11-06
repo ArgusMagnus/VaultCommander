@@ -178,28 +178,4 @@ static class Utils
             throw new ArgumentException("Download uri for zip archive not found", nameof(release));
         await DownloadAndExpandZipArchive(downloadUrl, name => Path.Combine(destinationDirectory, name), progress);
     }
-
-    public static void CopyProperties<TFrom, TTo>(TFrom from, TTo to)
-    {
-        TypeCache<TFrom, TTo>.CopyPropertiesAction(from, to);
-        if (to is IEntityCopy<TFrom> to2)
-            to2.CopyFields(from);
-    }
-
-    static class TypeCache<TFrom, TTo>
-    {
-        public static Action<TFrom, TTo> CopyPropertiesAction { get; } = GetCopyPropertiesAction();
-
-        static Action<TFrom, TTo> GetCopyPropertiesAction()
-        {
-            var properties = typeof(TFrom).GetProperties().Where(x => x.GetMethod is not null)
-                .Join(typeof(TTo).GetProperties().Where(x => x.SetMethod is not null),
-                x => (x.PropertyType, x.Name), x => (x.PropertyType, x.Name), (from, to) => (from, to));
-            var parFrom = Expression.Parameter(typeof(TFrom));
-            var parTo = Expression.Parameter(typeof(TTo));
-            var body = Expression.Block(properties
-                .Select(x => Expression.Assign(Expression.Property(parTo, x.to), Expression.Property(parFrom, x.from))));
-            return Expression.Lambda<Action<TFrom, TTo>>(body, parFrom, parTo).Compile();
-        }
-    }
 }
