@@ -41,7 +41,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         }));
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
         _vault = new(VaultFactory);
-        _storage = new KeeperStorage(_auth.Storage.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
+        _storage = new(_auth.Storage.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
     }
 
     public async ValueTask DisposeAsync()
@@ -50,8 +50,8 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         {
             var vault = await _vault.Value.ConfigureAwait(false);
             vault.Dispose();
-            await _storage.DisposeAsync();
         }
+        await _storage.DisposeAsync();
         _auth.Dispose();
     }
 
@@ -188,7 +188,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                         _ => field.Value
                     });
 
-                if (includeTotp && field.Type == "oneTimeCode")
+                if (includeTotp && field.Type == "oneTimeCode" && !string.IsNullOrEmpty(field.Value))
                     yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(field.Value).Item1);
             }
         }
