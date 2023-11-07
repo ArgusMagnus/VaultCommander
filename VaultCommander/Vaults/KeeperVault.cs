@@ -3,6 +3,7 @@ using KeeperSecurity.Authentication.Async;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -80,9 +81,11 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         return Task.FromResult<StatusDto?>(new(_auth.Storage.LastServer, null, _auth.Storage.LastLogin, null, status));
     }
 
-    public Task<StatusDto?> Initialize()
+    public async Task<StatusDto?> Initialize()
     {
-        return GetStatus();
+        await _storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
+        await _storage.Database.MigrateAsync();
+        return await GetStatus();
     }
 
     public async Task<StatusDto?> Login()

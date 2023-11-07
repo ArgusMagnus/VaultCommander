@@ -13,25 +13,21 @@ sealed partial class KeeperVault
     sealed class KeeperStorage : DbContext, IKeeperStorage
     {
         private DbSet<UserStorage> userStorage { get; init; } = null!;
-        private UserStorage _userStorage;
+        private Lazy<UserStorage> _userStorage;
 
         public string PersonalScopeUid
         {
-            get => _userStorage.PersonalScopeUid;
+            get => _userStorage.Value.PersonalScopeUid;
             [MemberNotNull(nameof(_userStorage))]
-            set
-            {
-                _userStorage = userStorage.Find(value) ?? userStorage.Add(new() { PersonalScopeUid = value }).Entity;
-                SaveChanges();
-            }
+            set => _userStorage = new(() => userStorage.Find(value) ?? userStorage.Add(new() { PersonalScopeUid = value }).Entity);
         }
 
         public long Revision
         {
-            get => _userStorage.Revision;
+            get => _userStorage.Value.Revision;
             set
             {
-                _userStorage.Revision = value;
+                _userStorage.Value.Revision = value;
                 SaveChanges();
             }
         }
@@ -180,45 +176,43 @@ sealed partial class KeeperVault
             where I : IUid
             where T : class, I, IEntity<I>, new()
         {
-            readonly DbContext _dbContext;
+            readonly KeeperStorage _dbContext;
             readonly DbSet<T> _set;
-            readonly string _personalScopeUid;
 
             public EntityStorage(KeeperStorage dbContext, DbSet<T> set)
             {
                 _dbContext = dbContext;
-                _personalScopeUid = dbContext.PersonalScopeUid;
                 _set = set;
             }
 
             public void DeleteUids(IEnumerable<string> uids)
             {
-                var remove = _set.Where(x => x.PersonalScopeUid == _personalScopeUid && uids.Contains(x.Uid)).ToList();
+                var remove = _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && uids.Contains(x.Uid)).ToList();
                 _set.RemoveRange(remove);
                 _dbContext.SaveChanges();
             }
 
             public IEnumerable<I> GetAll()
             {
-                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid);
+                return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid);
             }
 
             public I GetEntity(string uid)
             {
-                return _set.Find(_personalScopeUid, uid)!;
+                return _set.Find(_dbContext.PersonalScopeUid, uid)!;
             }
 
             public void PutEntities(IEnumerable<I> entities)
             {
                 foreach (var value in entities)
                 {
-                    if (_set.Find(_personalScopeUid, value.Uid) is T entity)
+                    if (_set.Find(_dbContext.PersonalScopeUid, value.Uid) is T entity)
                         entity.CopyFrom(value);
                     else
                     {
                         entity = new();
                         entity.CopyFrom(value);
-                        entity.PersonalScopeUid = _personalScopeUid;
+                        entity.PersonalScopeUid = _dbContext.PersonalScopeUid;
                         _set.Add(entity);
                     }
                 }
@@ -230,14 +224,12 @@ sealed partial class KeeperVault
             where I : IUidLink
             where T : class, I, IEntity<I>, new()
         {
-            readonly DbContext _dbContext;
+            readonly KeeperStorage _dbContext;
             readonly DbSet<T> _set;
-            readonly string _personalScopeUid;
 
             public PredicateStorage(KeeperStorage dbContext, DbSet<T> set)
             {
                 _dbContext = dbContext;
-                _personalScopeUid = dbContext.PersonalScopeUid;
                 _set = set;
             }
 
@@ -245,7 +237,7 @@ sealed partial class KeeperVault
             {
                 foreach (var link in links)
                 {
-                    if (_set.Find(_personalScopeUid, link.SubjectUid, link.ObjectUid) is T entity)
+                    if (_set.Find(_dbContext.PersonalScopeUid, link.SubjectUid, link.ObjectUid) is T entity)
                         _set.Remove(entity);
                 }
                 _dbContext.SaveChanges();
@@ -253,44 +245,44 @@ sealed partial class KeeperVault
 
             public void DeleteLinksForObjects(IEnumerable<string> objectUids)
             {
-                var remove = _set.Where(x => x.PersonalScopeUid == _personalScopeUid && objectUids.Contains(x.ObjectUid)).ToList();
+                var remove = _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && objectUids.Contains(x.ObjectUid)).ToList();
                 _set.RemoveRange(remove);
                 _dbContext.SaveChanges();
             }
 
             public void DeleteLinksForSubjects(IEnumerable<string> subjectUids)
             {
-                var remove = _set.Where(x => x.PersonalScopeUid == _personalScopeUid && subjectUids.Contains(x.SubjectUid)).ToList();
+                var remove = _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && subjectUids.Contains(x.SubjectUid)).ToList();
                 _set.RemoveRange(remove);
                 _dbContext.SaveChanges();
             }
 
             public IEnumerable<I> GetAllLinks()
             {
-                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid);
+                return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid);
             }
 
             public IEnumerable<I> GetLinksForObject(string objectUid)
             {
-                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid && x.ObjectUid == objectUid);
+                return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && x.ObjectUid == objectUid);
             }
 
             public IEnumerable<I> GetLinksForSubject(string subjectUid)
             {
-                return _set.Where(x => x.PersonalScopeUid == _personalScopeUid && x.SubjectUid == subjectUid);
+                return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && x.SubjectUid == subjectUid);
             }
 
             public void PutLinks(IEnumerable<I> entities)
             {
                 foreach (var value in entities)
                 {
-                    if (_set.Find(_personalScopeUid, value.SubjectUid, value.ObjectUid) is T entity)
+                    if (_set.Find(_dbContext.PersonalScopeUid, value.SubjectUid, value.ObjectUid) is T entity)
                         entity.CopyFrom(value);
                     else
                     {
                         entity = new();
                         entity.CopyFrom(value);
-                        entity.PersonalScopeUid = _personalScopeUid;
+                        entity.PersonalScopeUid = _dbContext.PersonalScopeUid;
                         _set.Add(entity);
                     }
                 }
