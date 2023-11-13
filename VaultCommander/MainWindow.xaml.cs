@@ -268,8 +268,9 @@ sealed partial class MainWindow : Window
             pos.Y -= ActualHeight / 2;
             Left = pos.X;
             Top = pos.Y;
+            Topmost = true;
             Show();
-            Activate();
+            _ = Dispatcher.InvokeAsync(() => Topmost = false, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
             var status = await vault.GetStatus();
             if (status is null || status.Status is Status.Unauthenticated)
