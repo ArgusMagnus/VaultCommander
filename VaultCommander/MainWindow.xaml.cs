@@ -32,6 +32,7 @@ sealed partial class MainWindow : Window
     readonly IReadOnlyDictionary<string, IVault> _vaultsByUriScheme;
     readonly string[] _arguments;
 
+    bool _hideOnCommandExecute = false;
     bool _cancelClose = true;
     CurrentWindowInformationWindow? _currentWindowInfoWindow;
 
@@ -169,10 +170,10 @@ sealed partial class MainWindow : Window
     {
         if (e.Button is WinForms.MouseButtons.Left)
         {
-            if (Visibility is not Visibility.Visible)
-                Show();
-            else
+            if (_hideOnCommandExecute = Visibility is Visibility.Visible)
                 Hide();
+            else
+                Show();
         }
     }
 
@@ -194,7 +195,10 @@ sealed partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         if (e.Cancel = _cancelClose)
+        {
+            _hideOnCommandExecute = true;
             Hide();
+        }
     }
 
     private new async Task Close()
@@ -251,7 +255,7 @@ sealed partial class MainWindow : Window
         {
             await Task.Yield();
             foreach (Button button in _buttons.Children)
-                button.Click -= OnBwCommandClicked;
+                button.Click -= OnCommandClicked;
             _buttons.Children.Clear();
             _vm.SelectedEntry = null;
 
@@ -300,7 +304,7 @@ sealed partial class MainWindow : Window
                 if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
                     continue;
                 var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, record.Id, bwCommand, parts[1]) };
-                button.Click += OnBwCommandClicked;
+                button.Click += OnCommandClicked;
                 _buttons.Children.Add(button);
             }
         }
@@ -308,8 +312,11 @@ sealed partial class MainWindow : Window
 
     sealed record ButtonTag(IVault Vault, string ItemId, ICommand Command, string Arguments);
 
-    private async void OnBwCommandClicked(object sender, RoutedEventArgs e)
+    private async void OnCommandClicked(object sender, RoutedEventArgs e)
     {
+        if (_hideOnCommandExecute)
+            Hide();
+
         var button = (Button)sender;
         //_vm.StatusBarText = $"Executing {button.Content}...";
         //using var scope = ShowProgressBar();
