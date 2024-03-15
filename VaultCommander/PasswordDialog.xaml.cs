@@ -26,7 +26,7 @@ sealed partial class PasswordDialog : Window
 
     private void OnButtonOK(object sender, RoutedEventArgs e) => DialogResult = true;
 
-    public static (string? UserEmail, EncryptedString? Password) Show(Window owner, string? userEmail)
+    public static (string? UserEmail, EncryptedString? Password) Show(Window owner, string? userEmail, bool emailOnly = false)
     {
         PasswordDialog dlg = new() { Owner = owner };
         if (!string.IsNullOrEmpty(userEmail))
@@ -34,6 +34,17 @@ sealed partial class PasswordDialog : Window
             dlg._emailBox.Text = userEmail;
             dlg._emailBox.IsReadOnly = true;
         }
+        if (emailOnly)
+        {
+            dlg._passwordLabel.Visibility = Visibility.Collapsed;
+            dlg._passwordBox.Visibility = Visibility.Collapsed;
+        }
         return dlg.ShowDialog() is true ? (dlg._emailBox.Text, new(dlg._passwordBox.Password)) : default;
+    }
+
+    private void OnUseSsoChanged(object sender, RoutedEventArgs e)
+    {
+        var cb = (CheckBox)sender;
+        _passwordBox.IsEnabled = cb.IsChecked is not true;
     }
 }

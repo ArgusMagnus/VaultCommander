@@ -1,4 +1,5 @@
-﻿using KeeperSecurity.Authentication;
+﻿using Enterprise;
+using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Async;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
@@ -6,6 +7,7 @@ using KeeperSecurity.Vault;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -39,7 +41,10 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         _auth = new(new AuthUi(), new JsonConfigurationStorage(new JsonConfigurationCache(new JsonConfigurationFileLoader(Path.Combine(_dataDirectory, "storage.json")))
         {
             ConfigurationProtection = new ConfigurationProtectionFactory()
-        }));
+        }))
+        { 
+            ResumeSession = true
+        };
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
         _vault = new(VaultFactory);
         _storage = new(_auth.Storage.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
@@ -90,25 +95,17 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
     public async Task<StatusDto?> Login()
     {
-        _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
-        var (user, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.LastLogin)).Task.ConfigureAwait(false);
-        if (pw is not null)
+        var (user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
+        if (!string.IsNullOrEmpty(user))
         {
             var ui = (AuthUi)_auth.Ui;
             using (ui.ProgressBox = await ProgressBox.Show())
             {
                 ui.ProgressBox.DetailText = "Anmelden...";
                 ui.ProgressBox.DetailProgress = double.NaN;
-                try
-                {
-                    await _auth.Login(user, pw.GetAsClearText());
-                    _storage.PersonalScopeUid = _auth.Username;
-                    //_storage.SetPasswordHashAndClientKey(CryptoUtils.DeriveV1KeyHash(pw.GetAsClearText(), null, 1), _auth.AuthContext.ClientKey);
-                }
-                catch (Exception)
-                {
-                    throw;
-                }
+                await _auth.Login(user, []);
+                _storage.PersonalScopeUid = _auth.Username;
+                //_storage.SetPasswordHashAndClientKey(CryptoUtils.DeriveV1KeyHash(pw.GetAsClearText(), null, 1), _auth.AuthContext.ClientKey);
             }
         }
         return await GetStatus();
@@ -144,7 +141,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         var records = vault.KeeperRecords as IReadOnlyCollection<KeeperRecord> ?? vault.KeeperRecords.ToList();
         var prefix = $"{UriScheme}:";
         validCommandSchemes = validCommandSchemes.Select(x => $"{x}:").ToList();
-        foreach (var (record, idx) in records.Select((x, i) => (x, i)))
+        foreach (var (record, idx) in records.Select((x, i) => (x, i)).Where(x => x.x.Owner))
         {
             progressBox.DetailProgress = (idx + 1.0) / records.Count;
             if (record is not TypedRecord data)
@@ -219,7 +216,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         }
     }
 
-    sealed class AuthUi : IAuthUI
+    sealed class AuthUi : IAuthUI, IAuthSsoUI
     {
         public ProgressBox.IViewModel? ProgressBox { get; set; }
 
@@ -256,6 +253,29 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             if (pw is null)
                 return false;
             await info.InvokePasswordActionDelegate(pw.GetAsClearText());
+            return true;
+        }
+
+        public void SsoLogoutUrl(string url)
+        {
+        }
+
+        public async Task<bool> WaitForSsoToken(ISsoTokenActionInfo actionInfo, CancellationToken token)
+        {
+            Process.Start(new ProcessStartInfo { FileName = actionInfo.SsoLoginUrl, UseShellExecute = true });
+            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "SSO Token")).Task.ConfigureAwait(false);
+            if (pw is null)
+                return false;
+            await actionInfo.InvokeSsoTokenAction(pw.GetAsClearText());
+            return true;
+        }
+
+        public async Task<bool> WaitForDataKey(IDataKeyChannelInfo[] channels, CancellationToken token)
+        {
+            var ssoChannel = channels.FirstOrDefault();
+            if (ssoChannel is null)
+                return false;
+            await ssoChannel.InvokeGetDataKeyAction().ConfigureAwait(false);
             return true;
         }
     }
