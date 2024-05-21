@@ -141,7 +141,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         var records = vault.KeeperRecords as IReadOnlyCollection<KeeperRecord> ?? vault.KeeperRecords.ToList();
         var prefix = $"{UriScheme}:";
         validCommandSchemes = validCommandSchemes.Select(x => $"{x}:").ToList();
-        foreach (var (record, idx) in records.Select((x, i) => (x, i)).Where(x => x.x.Owner))
+        foreach (var (record, idx) in records.Select((x, i) => (x, i)))
         {
             progressBox.DetailProgress = (idx + 1.0) / records.Count;
             if (record is not TypedRecord data)
@@ -258,6 +258,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
         public void SsoLogoutUrl(string url)
         {
+            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
         }
 
         public async Task<bool> WaitForSsoToken(ISsoTokenActionInfo actionInfo, CancellationToken token)
