@@ -99,6 +99,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         if (!string.IsNullOrEmpty(user))
         {
             var ui = (AuthUi)_auth.Ui;
+            ui.Reset();
             using (ui.ProgressBox = await ProgressBox.Show())
             {
                 ui.ProgressBox.DetailText = "Anmelden...";
@@ -267,16 +268,40 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "SSO Token")).Task.ConfigureAwait(false);
             if (pw is null)
                 return false;
-            await actionInfo.InvokeSsoTokenAction(pw.GetAsClearText());
+            var tcs = new TaskCompletionSource();
+            await using (token.Register(tcs.SetResult))
+            {
+                await actionInfo.InvokeSsoTokenAction(pw.GetAsClearText());
+                await tcs.Task;
+            }
             return true;
         }
 
+        bool _dataKeyRequested = false;
+
+        internal void Reset() => _dataKeyRequested = false;
+
         public async Task<bool> WaitForDataKey(IDataKeyChannelInfo[] channels, CancellationToken token)
         {
-            var ssoChannel = channels.FirstOrDefault();
+            if (_dataKeyRequested)
+                return true;
+            var ssoChannel = channels.FirstOrDefault(x => x.Channel is DataKeyShareChannel.KeeperPush);
             if (ssoChannel is null)
                 return false;
-            await ssoChannel.InvokeGetDataKeyAction().ConfigureAwait(false);
+
+            if (ProgressBox is not null)
+            {
+                ProgressBox.DetailText = $"Anfrage ({ssoChannel.Channel.SsoDataKeyShareChannelText()}) wurde versandt. Auf Genehmigung warten...";
+                ProgressBox.DetailProgress = double.NaN;
+            }
+
+            //var tcs = new TaskCompletionSource();
+            //await using (token.Register(tcs.SetResult))
+            {
+                await ssoChannel.InvokeGetDataKeyAction().ConfigureAwait(false);
+                _dataKeyRequested = true;
+                //await tcs.Task;
+            }
             return true;
         }
     }
