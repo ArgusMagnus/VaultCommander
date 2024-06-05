@@ -93,7 +93,7 @@ sealed class SonicWallCommand : Command<SonicWallCommand.Arguments>
         process.WaitForInputIdle();
         var window = new WindowHandle(process.MainWindowHandle);
         window.Focus();
-        Utils.SendKeys("{ENTER}", []);
+        Utils.SendKeysLiteral("{ENTER}");
     }
 
     public override Task<bool> Disconnect()

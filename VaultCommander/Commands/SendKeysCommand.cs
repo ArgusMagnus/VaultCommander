@@ -14,6 +14,7 @@ sealed class SendKeysCommand : Command<SendKeysCommand.Arguments>
     public record Arguments
     {
         public string? Keys { get; init; }
+        public bool Escape { get; init; }
         public string? WindowTitle { get; init; }
         public string? WindowTitlePattern { get; init; }
         public string? WindowTitleRegex { get; init; }
@@ -66,6 +67,9 @@ sealed class SendKeysCommand : Command<SendKeysCommand.Arguments>
         if (window == WindowHandle.Null)
             return;
         window.Focus();
-        Utils.SendKeys($"{args.Keys}");
+        if (args.Escape)
+            Utils.SendKeys($"{args.Keys}");
+        else
+            Utils.SendKeysLiteral(args.Keys);
     }
 }

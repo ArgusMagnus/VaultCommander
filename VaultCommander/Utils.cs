@@ -184,17 +184,18 @@ static class Utils
         await DownloadAndExpandZipArchive(downloadUrl, name => Path.Combine(destinationDirectory, name), progress);
     }
 
-    public static void SendKeys(string format, object?[] args)
+    public static void SendKeysLiteral(string keys) => WinForms.SendKeys.SendWait(keys);
+
+    public static void SendKeys(FormattableString formattableString)
     {
         // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.sendkeys.send?view=windowsdesktop-8.0#remarks
+        var args = formattableString.GetArguments();
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] is string str)
                 args[i] = Regex.Replace(str, @"([+^%~()[\]{}])", "{$1}");
         }
-        var keys = string.Format(format, args);
-        WinForms.SendKeys.SendWait(keys);
+        var keys = string.Format(formattableString.Format, args);
+        SendKeysLiteral(keys);
     }
-
-    public static void SendKeys(FormattableString formattableString) => SendKeys(formattableString.Format, formattableString.GetArguments());
 }
