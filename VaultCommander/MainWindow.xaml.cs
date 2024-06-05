@@ -65,7 +65,7 @@ sealed partial class MainWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-')[0], out var currentVersion) && releaseVersion > currentVersion)
+        if (await Utils.GetLatestRelease() is ReleaseInfo release && Version.TryParse(release.Version?.TrimStart('v'), out var releaseVersion) && Version.TryParse(_vm.Version.Split('-', '+')[0], out var currentVersion) && releaseVersion > currentVersion)
         {
             using var progressBox = await ProgressBox.Show();
             progressBox.StepText = "0 / 1";
