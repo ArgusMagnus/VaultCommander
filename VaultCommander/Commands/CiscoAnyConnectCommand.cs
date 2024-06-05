@@ -181,7 +181,7 @@ sealed class CiscoAnyConnectCommand : Command<CiscoAnyConnectCommand.Arguments>
                     await Task.Delay(200);
                 WindowHandle window = new(vpnui.MainWindowHandle);
                 window.Focus();
-                Utils.SendKeys("{ENTER}");
+                Utils.SendKeys("{ENTER}", []);
                 while ((window = WindowHandle.FindWindow(null, "Cisco AnyConnect Login")) == WindowHandle.Null)
                     await Task.Delay(200);
                 await Task.Delay(5000);
