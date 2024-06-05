@@ -5,6 +5,8 @@ using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,6 +14,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -262,18 +265,41 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
         }
 
-        public async Task<bool> WaitForSsoToken(ISsoTokenActionInfo actionInfo, CancellationToken token)
+        public async Task<bool> WaitForSsoToken(ISsoTokenActionInfo actionInfo, CancellationToken cancellationToken)
         {
-            Process.Start(new ProcessStartInfo { FileName = actionInfo.SsoLoginUrl, UseShellExecute = true });
-            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "SSO Token")).Task.ConfigureAwait(false);
-            if (pw is null)
-                return false;
-            var tcs = new TaskCompletionSource();
-            await using (token.Register(tcs.SetResult))
+            var tcs = new TaskCompletionSource<string?>();
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                await actionInfo.InvokeSsoTokenAction(pw.GetAsClearText());
-                await tcs.Task;
-            }
+                var webView = new WebView2();
+                var window = new Window { Content = webView, Width = 500, Height = 800 };
+                window.Loaded += async (_, _) =>
+                {
+                    var webViewOptions = new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
+                    var env = await CoreWebView2Environment.CreateAsync(options: webViewOptions);
+                    await webView.EnsureCoreWebView2Async(env);
+                    webView.Source = new(actionInfo.SsoLoginUrl);
+                };
+                window.Closed += (_, _) => tcs.TrySetResult(null);
+                webView.NavigationCompleted += async (a, b) =>
+                {
+                    var token = JsonSerializer.Deserialize<string?>(await webView.ExecuteScriptAsync("token"));
+                    if (!string.IsNullOrEmpty(token))
+                    {
+                        tcs.TrySetResult(token);
+                        window.Close();
+                    }
+                };
+                using (cancellationToken.Register(window.Close))
+                {
+                    if (!cancellationToken.IsCancellationRequested)
+                        window.ShowDialog();
+                }
+            });
+
+            var token = await tcs.Task;
+            if (string.IsNullOrEmpty(token))
+                return false;
+            await actionInfo.InvokeSsoTokenAction(token);
             return true;
         }
 
