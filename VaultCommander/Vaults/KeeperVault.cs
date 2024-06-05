@@ -280,15 +280,19 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                     webView.Source = new(actionInfo.SsoLoginUrl);
                 };
                 window.Closed += (_, _) => tcs.TrySetResult(null);
-                webView.NavigationCompleted += async (a, b) =>
+
+                async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs args)
                 {
                     var token = JsonSerializer.Deserialize<string?>(await webView.ExecuteScriptAsync("token"));
-                    if (!string.IsNullOrEmpty(token))
+                    if (!string.IsNullOrEmpty(token) && tcs.TrySetResult(token))
                     {
-                        tcs.TrySetResult(token);
+                        webView.NavigationCompleted -= OnNavigationCompleted;
                         window.Close();
                     }
-                };
+
+                }
+                webView.NavigationCompleted += OnNavigationCompleted;
+
                 using (cancellationToken.Register(window.Close))
                 {
                     if (!cancellationToken.IsCancellationRequested)
