@@ -153,9 +153,12 @@ static class Utils
                 if (destPath is not null)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-                    using (var dest = File.Open(destPath, FileMode.Create, FileAccess.Write))
-                    using (var source = entry.Open())
-                        await source.CopyToAsync(dest);
+                    if (!entry.FullName.EndsWith('/'))
+                    {
+                        using (var dest = File.Open(destPath, FileMode.Create, FileAccess.Write))
+                        using (var source = entry.Open())
+                            await source.CopyToAsync(dest);
+                    }
                 }
                 done += entry.Length;
                 progress?.Invoke(done / total / 2 + 0.5);
