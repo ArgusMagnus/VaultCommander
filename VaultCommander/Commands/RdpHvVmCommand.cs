@@ -33,13 +33,20 @@ sealed class RdpHvVmCommand : Command<RdpHvVmCommand.Arguments>
             "negotiate security layer:i:0"
         });
 
-        var username = args.Username ?? string.Empty;
-        username = username.Contains('\\') ? username : $"{args.Host}\\{username}";
-        using (var process = Process.Start(new ProcessStartInfo { FileName = "cmdkey", ArgumentList = { $"/generic:{args.Host}", $"/user:{username}", $"/pass:{args.Password}" }, UseShellExecute = false, CreateNoWindow = true }))
-            await process!.WaitForExitAsync();
+        var hasUsername = !string.IsNullOrWhiteSpace(args.Username);
+        var username = args.Username ?? "";
+        if (hasUsername)
+        {
+            username = username.Contains('\\') ? username : $"{args.Host}\\{username}";
+            using (var process = Process.Start(new ProcessStartInfo { FileName = "cmdkey", ArgumentList = { $"/generic:{args.Host}", $"/user:{username}", $"/pass:{args.Password}" }, UseShellExecute = false, CreateNoWindow = true }))
+                await process!.WaitForExitAsync();
+        }
         using (var process = Process.Start(new ProcessStartInfo { FileName = "mstsc", ArgumentList = { rdpPath.FullName } }))
             await process!.WaitForExitAsync();
-        using (var process = Process.Start(new ProcessStartInfo { FileName = "cmdkey", ArgumentList = { $"/delete:{args.Host}" }, UseShellExecute = false, CreateNoWindow = true }))
-            await process!.WaitForExitAsync();
+        if (hasUsername)
+        {
+            using (var process = Process.Start(new ProcessStartInfo { FileName = "cmdkey", ArgumentList = { $"/delete:{args.Host}" }, UseShellExecute = false, CreateNoWindow = true }))
+                await process!.WaitForExitAsync();
+        }
     }
 }

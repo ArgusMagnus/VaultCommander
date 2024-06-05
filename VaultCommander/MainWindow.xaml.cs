@@ -396,8 +396,9 @@ sealed partial class MainWindow : Window
                     if (record is not null)
                     {
                         var guid = $"{record.Id}";
-                        foreach (var field in record.Fields)
-                            obj.TryAdd(field.Name, JsonValue.Create($"{{{field.Name}@{guid}}}"));
+                        var dict = (IDictionary<string, JsonNode?>)obj;
+                        foreach (var field in record.Fields.Where(x => !dict.Keys.Contains(x.Name, StringComparer.OrdinalIgnoreCase)))
+                            obj.Add(field.Name, JsonValue.Create($"{{{field.Name}@{guid}}}"));
                     }
 
                     foreach (var prop in obj.AsEnumerable().ToList())
