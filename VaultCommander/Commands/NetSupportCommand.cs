@@ -42,7 +42,7 @@ sealed class NetSupportCommand : Command<NetSupportCommand.Arguments>
         while (!WindowHandle.FindWindow(x => x.TryGetThreadAndProcessId(out _, out var pid) && pid == process.Id && x.Text is "Sicherheit", out window))
             await Task.Delay(200);
         window.Focus();
-        WinForms.SendKeys.SendWait($"{args.Username}{{TAB}}{args.Password}{{ENTER}}");
+        Utils.SendKeys($"{args.Username}{{TAB}}{args.Password}{{ENTER}}");
         await process.WaitForExitAsync();
     }
 

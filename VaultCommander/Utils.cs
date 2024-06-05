@@ -18,6 +18,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Linq.Expressions;
 using KeeperSecurity.Utils;
+using WinForms = System.Windows.Forms;
 
 namespace VaultCommander;
 
@@ -179,4 +180,13 @@ static class Utils
             throw new ArgumentException("Download uri for zip archive not found", nameof(release));
         await DownloadAndExpandZipArchive(downloadUrl, name => Path.Combine(destinationDirectory, name), progress);
     }
+
+    public static void SendKeys(string format, params object?[] args)
+    {
+        // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.sendkeys.send?view=windowsdesktop-8.0#remarks
+        var keys = string.Format(format, args.Select(x => x is string str ? Regex.Replace(str, @"([+^%~()[\]{}])", "{$1}") : x));
+        WinForms.SendKeys.SendWait(keys);
+    }
+
+    public static void SendKeys(FormattableString formattableString) => SendKeys(formattableString.Format, formattableString.GetArguments());
 }

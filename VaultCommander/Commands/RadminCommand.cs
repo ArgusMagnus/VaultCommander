@@ -64,13 +64,13 @@ sealed class RadminCommand : Command<RadminCommand.Arguments>
                 if (!gatewaySent && match!.Groups["GW"].Success)
                 {
                     window.Focus();
-                    WinForms.SendKeys.SendWait($"{args.Gateway!.Username}{{TAB}}{args.Gateway.Password}{{TAB}}{{ENTER}}");
+                    Utils.SendKeys($"{args.Gateway!.Username}{{TAB}}{args.Gateway.Password}{{TAB}}{{ENTER}}");
                     gatewaySent = true;
                 }
                 else if (match!.Groups["Host"].Success)
                 {
                     window.Focus();
-                    WinForms.SendKeys.SendWait($"{args.Username}{{TAB}}{args.Password}{{TAB}}{{ENTER}}");
+                    Utils.SendKeys($"{args.Username}{{TAB}}{args.Password}{{TAB}}{{ENTER}}");
                     break;
                 }
             }

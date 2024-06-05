@@ -181,15 +181,15 @@ sealed class CiscoAnyConnectCommand : Command<CiscoAnyConnectCommand.Arguments>
                     await Task.Delay(200);
                 WindowHandle window = new(vpnui.MainWindowHandle);
                 window.Focus();
-                WinForms.SendKeys.SendWait("{ENTER}");
+                Utils.SendKeys("{ENTER}");
                 while ((window = WindowHandle.FindWindow(null, "Cisco AnyConnect Login")) == WindowHandle.Null)
                     await Task.Delay(200);
                 await Task.Delay(5000);
                 window.Focus();
-                WinForms.SendKeys.SendWait($"{args.Username}{{ENTER}}");
+                Utils.SendKeys($"{args.Username}{{ENTER}}");
                 await Task.Delay(2000);
                 window.Focus();
-                WinForms.SendKeys.SendWait($"{args.Password}{{ENTER}}");
+                Utils.SendKeys($"{args.Password}{{ENTER}}");
             }
         }
         finally

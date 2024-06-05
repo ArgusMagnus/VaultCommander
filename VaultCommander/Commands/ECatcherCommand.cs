@@ -67,7 +67,7 @@ sealed class ECatcherCommand : Command<ECatcherCommand.Arguments>
             var handle = new WindowHandle(process.MainWindowHandle);
             handle.Focus();
         }
-        System.Windows.Forms.SendKeys.SendWait($"{args.Password}{{ENTER}}");
+        Utils.SendKeys($"{args.Password}{{ENTER}}");
     }
 
     public override Task<bool> Disconnect()

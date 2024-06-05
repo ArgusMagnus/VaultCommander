@@ -277,6 +277,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                     var webViewOptions = new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
                     var env = await CoreWebView2Environment.CreateAsync(options: webViewOptions);
                     await webView.EnsureCoreWebView2Async(env);
+                    webView.CoreWebView2.DocumentTitleChanged += (_, _) => window.Title = webView.CoreWebView2.DocumentTitle;
                     webView.Source = new(actionInfo.SsoLoginUrl);
                 };
                 window.Closed += (_, _) => tcs.TrySetResult(null);
