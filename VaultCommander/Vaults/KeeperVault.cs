@@ -27,10 +27,9 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     // https://keeper-security.github.io/gitbook-keeper-sdk/CSharp/html/R_Project_Documentation.htm
 
     public string VaultName => "Keeper";
-
     public string UriScheme => "KeeperCmd";
-
     public string UriFieldName => nameof(VaultCommander);
+    public int? UidLength => 22;
 
     readonly string _dataDirectory;
     readonly Auth _auth;

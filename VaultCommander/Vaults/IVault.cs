@@ -22,6 +22,7 @@ interface IVault
     public string VaultName { get; }
     public string UriScheme { get; }
     public string UriFieldName { get; }
+    public int? UidLength { get; }
 
     public Task<StatusDto?> Initialize();
     public Task<StatusDto?> Login();

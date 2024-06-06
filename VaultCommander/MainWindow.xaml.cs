@@ -243,15 +243,24 @@ sealed partial class MainWindow : Window
     private async Task<bool> TryHandleVaultUri(string uri, bool wait)
     {
         var parts = uri.Split(':', 2);
+        var silent = false;
+        var uid = parts.ElementAtOrDefault(1);
         if (!_vaultsByUriScheme.TryGetValue(parts[0], out var vault))
+        {
+            silent = true;
+            uid = uri;
+            vault = _vaults.FirstOrDefault(x => uid.Length == x.UidLength);
+        }
+
+        if (vault is null)
             return false;
 
-        var task = HandleUri(vault, parts.ElementAtOrDefault(1));
+        var task = HandleUri(vault, uid, silent);
         if (wait)
             await task.ConfigureAwait(false);
         return true;
 
-        async Task HandleUri(IVault vault, string? uid)
+        async Task HandleUri(IVault vault, string? uid, bool silent)
         {
             await Task.Yield();
             foreach (Button button in _buttons.Children)
@@ -293,7 +302,8 @@ sealed partial class MainWindow : Window
 
             if (record is null)
             {
-                MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (!silent)
+                    MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
