@@ -108,7 +108,6 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                 ui.ProgressBox.DetailProgress = double.NaN;
                 await _auth.Login(user, []);
                 _storage.PersonalScopeUid = _auth.Username;
-                //_storage.SetPasswordHashAndClientKey(CryptoUtils.DeriveV1KeyHash(pw.GetAsClearText(), null, 1), _auth.AuthContext.ClientKey);
             }
         }
         return await GetStatus();

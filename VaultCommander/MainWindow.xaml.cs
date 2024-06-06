@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -231,13 +232,29 @@ sealed partial class MainWindow : Window
     {
         const int WM_CLIPBOARDUPDATE = 0x031D;
 
-        if (msg is WM_CLIPBOARDUPDATE && TryHandleVaultUri(Clipboard.GetText(), false).Result)
+        if (msg is WM_CLIPBOARDUPDATE && TryHandleVaultUri(GetClipboardText(), false).Result)
         {
-            Clipboard.Clear();
+            try { Clipboard.Clear(); }
+            catch (COMException) { }
             handled = true;
         }
 
         return nint.Zero;
+
+        static string GetClipboardText()
+        {
+            var delay = TimeSpan.FromMilliseconds(10);
+            for (int i = 0; i < 9; i++)
+            {
+                try { return Clipboard.GetText(); }
+                catch (COMException) { }
+                Thread.Sleep(delay);
+                delay *= 1.5;
+            }
+            try { return Clipboard.GetText(); }
+            catch (COMException) { }
+            return "";
+        }
     }
 
     private async Task<bool> TryHandleVaultUri(string uri, bool wait)
