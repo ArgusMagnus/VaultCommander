@@ -23,17 +23,18 @@ abstract class Command<T> : ICommand
     async Task ICommand.Execute(object _args)
     {
         var args = (T)_args;
-        var executeInTerminal = ExecuteInTerminal(args) && !Debugger.IsAttached;
+        var executeInTerminal = ExecuteInTerminal(args);
         if (executeInTerminal && !ICommand.IsInTerminal)
         {
-            var json = ProtectedData.Protect(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(args)), null, DataProtectionScope.CurrentUser);
+            var salt = RandomNumberGenerator.GetBytes(32);
+            var json = ProtectedData.Protect(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(args)), salt, DataProtectionScope.CurrentUser);
             using TempFile tmpFile = new();
             await File.WriteAllBytesAsync(tmpFile.FullName, json);
             var startInfo = new ProcessStartInfo
             {
                 FileName = Path.ChangeExtension(typeof(ICommand).Assembly.Location, ".exe"),
                 UseShellExecute = false,
-                ArgumentList = { nameof(Terminal.Verbs.Execute), typeof(Command<T>).Assembly.Location, GetType().FullName!, tmpFile.FullName }
+                ArgumentList = { nameof(Terminal.Verbs.Execute), typeof(Command<T>).Assembly.Location, GetType().FullName!, tmpFile.FullName, Convert.ToBase64String(salt) }
             };
             if (Debugger.IsAttached)
                 startInfo.ArgumentList.Add("/d");

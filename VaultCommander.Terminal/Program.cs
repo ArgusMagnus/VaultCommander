@@ -20,13 +20,14 @@ try
                 var assembly = args[1];
                 var typeName = args[2];
                 var argsPath = args[3];
+                var salt = args[4];
 
                 var buffer = await File.ReadAllBytesAsync(argsPath);
                 File.Delete(argsPath);
 
                 var type = Assembly.LoadFrom(assembly).GetType(typeName) ?? throw new InvalidOperationException($"Type '{typeName}' not found.");
                 var command = (ICommand)Activator.CreateInstance(type)!;
-                var commandArgs = JsonSerializer.Deserialize(Encoding.UTF8.GetString(ProtectedData.Unprotect(buffer, null, DataProtectionScope.CurrentUser)), command.ArgumentsType) ?? throw new FormatException();
+                var commandArgs = JsonSerializer.Deserialize(Encoding.UTF8.GetString(ProtectedData.Unprotect(buffer, Convert.FromBase64String(salt), DataProtectionScope.CurrentUser)), command.ArgumentsType) ?? throw new FormatException();
                 ICommand.IsInTerminal = true;
                 await command.Execute(commandArgs);
                 break;
