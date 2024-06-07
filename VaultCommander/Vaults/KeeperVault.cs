@@ -242,6 +242,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             var codeChannel = channels.OfType<ITwoFactorAppCodeInfo>().FirstOrDefault();
             if (codeChannel is null)
                 return false;
+            codeChannel.Duration = TwoFactorDuration.Forever;
             var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "2FA")).Task.ConfigureAwait(false);
             if (pw is null)
                 return false;

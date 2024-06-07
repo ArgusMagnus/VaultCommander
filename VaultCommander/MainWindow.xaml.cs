@@ -243,16 +243,16 @@ sealed partial class MainWindow : Window
 
         static string GetClipboardText()
         {
+            try { return Clipboard.GetText(); }
+            catch (COMException) { }
             var delay = TimeSpan.FromMilliseconds(10);
             for (int i = 0; i < 9; i++)
             {
+                Thread.Sleep(delay);
                 try { return Clipboard.GetText(); }
                 catch (COMException) { }
-                Thread.Sleep(delay);
                 delay *= 1.5;
             }
-            try { return Clipboard.GetText(); }
-            catch (COMException) { }
             return "";
         }
     }
@@ -276,66 +276,66 @@ sealed partial class MainWindow : Window
         if (wait)
             await task.ConfigureAwait(false);
         return true;
+    }
 
-        async Task HandleUri(IVault vault, string? uid, bool silent)
+    private async Task HandleUri(IVault vault, string? uid, bool silent)
+    {
+        await Task.Yield();
+        foreach (Button button in _buttons.Children)
+            button.Click -= OnCommandClicked;
+        _buttons.Children.Clear();
+        _vm.SelectedEntry = null;
+
+        if (string.IsNullOrEmpty(uid))
+            return;
+
+        static Point GetMousePosition()
         {
-            await Task.Yield();
-            foreach (Button button in _buttons.Children)
-                button.Click -= OnCommandClicked;
-            _buttons.Children.Clear();
-            _vm.SelectedEntry = null;
-
-            if (string.IsNullOrEmpty(uid))
-                return;
-
-            static Point GetMousePosition()
-            {
-                var point = WinForms.Control.MousePosition;
-                return new(point.X, point.Y);
-            }
-            var pos = PresentationSource.FromVisual(this).CompositionTarget.TransformFromDevice.Transform(GetMousePosition());
-            pos.X -= ActualWidth / 2;
-            pos.Y -= ActualHeight / 2;
-            Left = pos.X;
-            Top = pos.Y;
-            Topmost = true;
-            Show();
-            _ = Dispatcher.InvokeAsync(() => Topmost = false, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-
-            var status = await vault.GetStatus();
-            if (status is null || status.Status is Status.Unauthenticated)
-            {
-                status = await vault.Login();
-                if (status is null || status.Status is Status.Unauthenticated)
-                    return;
-            }
-
-            Record? record = null;
-            try { record = await vault.GetItem(uid); }
-            catch { }
-
-            if (record?.Id != uid)
-                record = await vault.UpdateUris(_commands.Keys, uid);
-
-            if (record is null)
-            {
-                if (!silent)
-                    MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            _vm.SelectedEntry = new(record);
-            foreach (var field in record.Fields.Where(x => !string.IsNullOrEmpty(x.Value)))
-            {
-                var parts = field.Value!.Split(':', 2);
-                if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
-                    continue;
-                var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, record.Id, bwCommand, parts[1]) };
-                button.Click += OnCommandClicked;
-                _buttons.Children.Add(button);
-            }
+            var point = WinForms.Control.MousePosition;
+            return new(point.X, point.Y);
         }
-    }    
+        var pos = PresentationSource.FromVisual(this).CompositionTarget.TransformFromDevice.Transform(GetMousePosition());
+        pos.X -= ActualWidth / 2;
+        pos.Y -= ActualHeight / 2;
+        Left = pos.X;
+        Top = pos.Y;
+        Topmost = true;
+        Show();
+        _ = Dispatcher.InvokeAsync(() => Topmost = false, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+        var status = await vault.GetStatus();
+        if (status is null || status.Status is Status.Unauthenticated)
+        {
+            status = await vault.Login();
+            if (status is null || status.Status is Status.Unauthenticated)
+                return;
+        }
+
+        Record? record = null;
+        try { record = await vault.GetItem(uid); }
+        catch { }
+
+        if (record?.Id != uid)
+            record = await vault.UpdateUris(_commands.Keys, uid);
+
+        if (record is null)
+        {
+            if (!silent)
+                MessageBox.Show(this, $"Es wurde kein Eintrag mit der UID '{uid}' gefunden.", "Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        _vm.SelectedEntry = new(record);
+        foreach (var field in record.Fields.Where(x => !string.IsNullOrEmpty(x.Value)))
+        {
+            var parts = field.Value!.Split(':', 2);
+            if (parts.Length is not 2 || !_commands.TryGetValue(parts[0], out var bwCommand))
+                continue;
+            var button = new Button { Content = field.Name, IsEnabled = bwCommand.CanExecute, Margin = new(0, 10, 0, 0), Tag = new ButtonTag(vault, record.Id, bwCommand, parts[1]) };
+            button.Click += OnCommandClicked;
+            _buttons.Children.Add(button);
+        }
+    }
 
     sealed record ButtonTag(IVault Vault, string ItemId, ICommand Command, string Arguments);
 
