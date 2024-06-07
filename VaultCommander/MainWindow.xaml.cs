@@ -339,6 +339,9 @@ sealed partial class MainWindow : Window
 
     sealed record ButtonTag(IVault Vault, string ItemId, ICommand Command, string Arguments);
 
+    [GeneratedRegex(@"\{(?<N>\w+)(?:@(?<R>(?>(?>(?<c>\{)?[\w@\-]*)+(?>(?<-c>\})?)+)+))?\}")]
+    private static partial Regex GetArgumentParserRegex(); 
+
     private async void OnCommandClicked(object sender, RoutedEventArgs e)
     {
         if (_hideOnCommandExecute)
@@ -346,13 +349,13 @@ sealed partial class MainWindow : Window
 
         var button = (Button)sender;
         button.IsEnabled = false;
-        try { await InvokeBwCommand((ButtonTag)button.Tag); }
+        try { await InvokeCommand((ButtonTag)button.Tag); }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, ex.GetType().FullName, MessageBoxButton.OK, MessageBoxImage.Error); }
         button.IsEnabled = true;
 
         return;
 
-        async Task InvokeBwCommand(ButtonTag tag)
+        async Task InvokeCommand(ButtonTag tag)
         {
             JsonNode argsNode = (string.IsNullOrEmpty(tag.Arguments) ? null : JsonNode.Parse(tag.Arguments)) ?? new JsonObject();
 
@@ -366,14 +369,14 @@ sealed partial class MainWindow : Window
             }
 
             Dictionary<string, Record?> records = new();
-            const string Pattern = @"\{(?<N>\w+)(?:@(?<R>(?>(?>(?<c>\{)?[\w@\-]*)+(?>(?<-c>\})?)+)+))?\}";
+            var regex = GetArgumentParserRegex();
 
             string EvaluateMatch(Match match)
             {
                 string uid = tag.ItemId;
                 var r = match.Groups["R"];
                 if (r.Success)
-                    uid = Regex.Replace(r.Value, Pattern, EvaluateMatch);
+                    uid = regex.Replace(r.Value, EvaluateMatch);
                 var item = GetItem(tag.Vault, uid, records).Result;
                 if (item is null)
                     return match.Value;
@@ -381,10 +384,10 @@ sealed partial class MainWindow : Window
                 var name = match.Groups["N"].Value;
                 var field = item.Fields.FirstOrDefault(x => string.Equals(name, x.Name, StringComparison.OrdinalIgnoreCase));
                 if (field is not null)
-                    return Regex.Replace(field.Value ?? string.Empty, Pattern, EvaluateMatch);
+                    return regex.Replace(field.Value ?? "", EvaluateMatch);
                 return match.Value;
             };
-            await ReplacePlaceholders(argsNode, null, null, tag.Vault, tag.ItemId, records, Pattern, EvaluateMatch);
+            await ReplacePlaceholders(argsNode, null, null, tag.Vault, tag.ItemId, records, regex, EvaluateMatch);
 
             var args = argsNode.Deserialize(tag.Command.ArgumentsType, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (args is not null)
@@ -402,7 +405,7 @@ sealed partial class MainWindow : Window
                 return record;
             }
 
-            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, string? itemId, IDictionary<string, Record?> records, string pattern, MatchEvaluator matchEvaluator)
+            static async Task ReplacePlaceholders(JsonNode? node, string? name, int? index, IVault vault, string? itemId, IDictionary<string, Record?> records, Regex regex, MatchEvaluator matchEvaluator)
             {
                 if (node is JsonObject obj)
                 {
@@ -421,26 +424,26 @@ sealed partial class MainWindow : Window
                     }
                     if (record is not null)
                     {
-                        var guid = $"{record.Id}";
+                        var uid = record.Id;
                         var dict = (IDictionary<string, JsonNode?>)obj;
                         foreach (var field in record.Fields.Where(x => !dict.Keys.Contains(x.Name, StringComparer.OrdinalIgnoreCase)))
-                            obj.Add(field.Name, JsonValue.Create($"{{{field.Name}@{guid}}}"));
+                            obj.Add(field.Name, JsonValue.Create($"{{{field.Name}@{uid}}}"));
                     }
 
                     foreach (var prop in obj.AsEnumerable().ToList())
-                        await ReplacePlaceholders(prop.Value, prop.Key, null, vault, null, records, pattern, matchEvaluator);
+                        await ReplacePlaceholders(prop.Value, prop.Key, null, vault, null, records, regex, matchEvaluator);
                 }
                 else if (node is JsonArray array)
                 {
                     for (int i = 0; i < array.Count; i++)
-                        await ReplacePlaceholders(array[i], null, i, vault, null, records, pattern, matchEvaluator).ConfigureAwait(false);
+                        await ReplacePlaceholders(array[i], null, i, vault, null, records, regex, matchEvaluator).ConfigureAwait(false);
                 }
                 else if (node is JsonValue value && value.TryGetValue(out string? str))
                 {
                     if (index is not null)
-                        value.Parent![index.Value] = JsonValue.Create(Regex.Replace(str, pattern, matchEvaluator));
+                        value.Parent![index.Value] = JsonValue.Create(regex.Replace(str, matchEvaluator));
                     else
-                        value.Parent![name!] = JsonValue.Create(Regex.Replace(str, pattern, matchEvaluator));
+                        value.Parent![name!] = JsonValue.Create(regex.Replace(str, matchEvaluator));
                 }
             }
         }
