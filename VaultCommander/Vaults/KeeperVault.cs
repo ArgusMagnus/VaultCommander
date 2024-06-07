@@ -40,7 +40,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     {
         _dataDirectory = Path.Combine(dataDirectoryRoot, VaultName);
         Directory.CreateDirectory(_dataDirectory);
-        _auth = new(new AuthUi(), new JsonConfigurationStorage(new JsonConfigurationCache(new JsonConfigurationFileLoader(Path.Combine(_dataDirectory, "storage.json")))
+        _auth = new(new AuthUi(_dataDirectory), new JsonConfigurationStorage(new JsonConfigurationCache(new JsonConfigurationFileLoader(Path.Combine(_dataDirectory, "storage.json")))
         {
             ConfigurationProtection = new ConfigurationProtectionFactory()
         }))
@@ -218,8 +218,10 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         }
     }
 
-    sealed class AuthUi : IAuthUI, IAuthSsoUI
+    sealed class AuthUi(string dataDir) : IAuthUI, IAuthSsoUI
     {
+        readonly string _dataDir = dataDir;
+
         public ProgressBox.IViewModel? ProgressBox { get; set; }
 
         public async Task<bool> WaitForDeviceApproval(IDeviceApprovalChannelInfo[] channels, CancellationToken token)
@@ -274,7 +276,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                 window.Loaded += async (_, _) =>
                 {
                     var webViewOptions = new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
-                    var env = await CoreWebView2Environment.CreateAsync(options: webViewOptions);
+                    var env = await CoreWebView2Environment.CreateAsync(null, _dataDir, webViewOptions);
                     await webView.EnsureCoreWebView2Async(env);
                     webView.CoreWebView2.DocumentTitleChanged += (_, _) => window.Title = webView.CoreWebView2.DocumentTitle;
                     webView.Source = new(actionInfo.SsoLoginUrl);
