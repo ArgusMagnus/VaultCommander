@@ -345,10 +345,9 @@ sealed partial class MainWindow : Window
             Hide();
 
         var button = (Button)sender;
-        //_vm.StatusBarText = $"Executing {button.Content}...";
-        //using var scope = ShowProgressBar();
         button.IsEnabled = false;
-        await InvokeBwCommand((ButtonTag)button.Tag);
+        try { await InvokeBwCommand((ButtonTag)button.Tag); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, ex.GetType().FullName, MessageBoxButton.OK, MessageBoxImage.Error); }
         button.IsEnabled = true;
 
         return;
