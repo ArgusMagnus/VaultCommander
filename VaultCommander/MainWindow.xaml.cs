@@ -264,9 +264,9 @@ sealed partial class MainWindow : Window
         var uid = parts.ElementAtOrDefault(1);
         if (!_vaultsByUriScheme.TryGetValue(parts[0], out var vault))
         {
-            silent = true;
-            uid = uri;
-            vault = _vaults.FirstOrDefault(x => uid.Length == x.UidLength);
+            //silent = true;
+            //uid = uri;
+            //vault = _vaults.FirstOrDefault(x => uid.Length == x.UidLength);
         }
 
         if (vault is null)
