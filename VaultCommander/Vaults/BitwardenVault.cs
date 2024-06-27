@@ -17,7 +17,6 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
     public string VaultName => "Bitwarden";
     public string UriScheme => "BwCmd";
     public string UriFieldName => nameof(VaultCommander);
-    public int? UidLength => 36;
 
     BitwardenVault(string dataDirectoryRoot) => _cli = new(Path.Combine(dataDirectoryRoot, VaultName, "bw.exe"));
 

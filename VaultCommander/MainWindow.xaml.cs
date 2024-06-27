@@ -257,19 +257,12 @@ sealed partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> TryHandleVaultUri(string uri, bool wait)
+    private async ValueTask<bool> TryHandleVaultUri(string uri, bool wait)
     {
         var parts = uri.Split(':', 2);
         var silent = false;
         var uid = parts.ElementAtOrDefault(1);
         if (!_vaultsByUriScheme.TryGetValue(parts[0], out var vault))
-        {
-            //silent = true;
-            //uid = uri;
-            //vault = _vaults.FirstOrDefault(x => uid.Length == x.UidLength);
-        }
-
-        if (vault is null)
             return false;
 
         var task = HandleUri(vault, uid, silent);

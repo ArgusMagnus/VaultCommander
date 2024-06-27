@@ -29,7 +29,6 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     public string VaultName => "Keeper";
     public string UriScheme => "KeeperCmd";
     public string UriFieldName => nameof(VaultCommander);
-    public int? UidLength => 22;
 
     readonly string _dataDirectory;
     readonly Auth _auth;
@@ -244,11 +243,13 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             var codeChannel = channels.OfType<ITwoFactorAppCodeInfo>().FirstOrDefault();
             if (codeChannel is null)
                 return false;
+
             codeChannel.Duration = TwoFactorDuration.Forever;
-            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "2FA")).Task.ConfigureAwait(false);
+            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', codeChannel.ApplicationName, codeChannel.PhoneNumber))).Task.ConfigureAwait(false);
             if (pw is null)
                 return false;
-            await codeChannel.InvokeTwoFactorCodeAction(pw.GetAsClearText());
+            try { await codeChannel.InvokeTwoFactorCodeAction(pw.GetAsClearText()); }
+            catch (KeeperApiException) { }
             return true;
         }
 
