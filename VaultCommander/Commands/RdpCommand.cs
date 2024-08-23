@@ -58,8 +58,48 @@ sealed class RdpCommand : Command<RdpCommand.Arguments>
             using (var process = Process.Start(new ProcessStartInfo { FileName = "cmdkey", ArgumentList = { $"/generic:{args.Host}", $"/user:{username}", $"/pass:{args.Password}" }, UseShellExecute = false, CreateNoWindow = true }))
                 await process!.WaitForExitAsync();
         }
+        HashSet<WindowHandle> loginWindows = new();
+        WindowHandle.EnumWindows(window =>
+        {
+            if (window.TryGetThreadAndProcessId(out _, out var processId) && Process.GetProcessById(processId).ProcessName is "CredentialUIBroker")
+                loginWindows.Add(window);
+            return true;
+        });
         using (var process = Process.Start(new ProcessStartInfo { FileName = "mstsc", ArgumentList = { rdpPath.FullName } }))
-            await process!.WaitForExitAsync();
+        {
+            var task = process!.WaitForExitAsync();
+            while (hasUsername && !task.IsCompleted)
+            {
+                try { await task.WaitAsync(TimeSpan.FromSeconds(1)); }
+                catch (TimeoutException)
+                {
+                    process.Refresh();
+                    if (process.MainWindowTitle.StartsWith($"{Path.GetFileNameWithoutExtension(rdpPath.FullName)} -"))
+                        break;
+
+                    WindowHandle loginWindow = default;
+                    Process? loginProcess = null;
+                    WindowHandle.EnumWindows(window =>
+                    {
+                        if (loginWindows.Contains(window) || !window.TryGetThreadAndProcessId(out _, out var processId) || Process.GetProcessById(processId) is not { ProcessName: "CredentialUIBroker" } p)
+                            return true;
+                        loginWindow = window;
+                        loginProcess = p;
+                        return false;
+                    });
+
+                    if (loginProcess is not null)
+                    {
+                        await Utils.WaitForProcessReady(loginProcess);
+                        loginWindow.Focus();
+                        Utils.SendKeys($"{args.Password}{{ENTER}}");
+                    }
+                }
+            }
+            if (task.IsCompleted)
+                await task; // throw Exceptions
+            // DO NOT await task. Connection is already established, we should discard the saved credentials as soon as possible.
+        }
         if (hasUsername)
         {
             using (var process = Process.Start(new ProcessStartInfo { FileName = "cmdkey", ArgumentList = { $"/delete:{args.Host}" }, UseShellExecute = false, CreateNoWindow = true }))
