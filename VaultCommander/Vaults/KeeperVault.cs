@@ -1,4 +1,7 @@
-﻿using Enterprise;
+﻿using AccountSummary;
+using Enterprise;
+using Fido2NetLib;
+using Fido2NetLib.Objects;
 using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Async;
 using KeeperSecurity.Configuration;
@@ -19,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using VaultCommander.Commands;
+using Windows.Security.Credentials;
 
 namespace VaultCommander.Vaults;
 
@@ -108,6 +112,8 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                 await _auth.Login(user, []);
                 _storage.PersonalScopeUid = _auth.Username;
             }
+            var account = await _auth.LoadAccountSummary();
+            var securityKeys = account.Settings.SecurityKeys;
         }
         return await GetStatus();
     }
@@ -217,7 +223,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         }
     }
 
-    sealed class AuthUi(string dataDir) : IAuthUI, IAuthSsoUI
+    sealed class AuthUi(string dataDir) : IAuthUI, IAuthSsoUI, IAuthSecurityKeyUI
     {
         readonly string _dataDir = dataDir;
 
@@ -240,17 +246,27 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
         public async Task<bool> WaitForTwoFactorCode(ITwoFactorChannelInfo[] channels, CancellationToken token)
         {
-            var codeChannel = channels.OfType<ITwoFactorAppCodeInfo>().FirstOrDefault();
-            if (codeChannel is null)
-                return false;
 
-            codeChannel.Duration = TwoFactorDuration.Forever;
-            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', codeChannel.ApplicationName, codeChannel.PhoneNumber))).Task.ConfigureAwait(false);
-            if (pw is null)
-                return false;
-            try { await codeChannel.InvokeTwoFactorCodeAction(pw.GetAsClearText()); }
-            catch (KeeperApiException) { }
-            return true;
+
+            var results = await Task.WhenAll(channels.Select(async channel =>
+            {
+                if (channel is ITwoFactorPushInfo pushChannel)
+                {
+                    try { await Task.WhenAll(pushChannel.SupportedActions.Select(x => pushChannel.InvokeTwoFactorPushAction(x))); }
+                    catch (KeeperApiException) { }
+                }
+                else if (channel is ITwoFactorAppCodeInfo appCodeChannel)
+                {
+                    appCodeChannel.Duration = TwoFactorDuration.EveryLogin;
+                    var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', appCodeChannel.ApplicationName, appCodeChannel.PhoneNumber))).Task.ConfigureAwait(false);
+                    if (pw is null)
+                        return false;
+                    try { await appCodeChannel.InvokeTwoFactorCodeAction(pw.GetAsClearText()); }
+                    catch (KeeperApiException) { }
+                }
+                return true;
+            }));
+            return results.All(x => x);
         }
 
         public async Task<bool> WaitForUserPassword(IPasswordInfo info, CancellationToken token)
@@ -336,6 +352,52 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                 //await tcs.Task;
             }
             return true;
+        }
+
+        public async Task<string> AuthenticatePublicKeyRequest(PublicKeyCredentialRequestOptions request)
+        {
+            const string CredentialTypePublicKey = "public-key";
+
+            if (!await KeyCredentialManager.IsSupportedAsync())
+                return "";
+
+            foreach (var cred in request.allowCredentials)
+            {
+                var result = await KeyCredentialManager.OpenAsync(cred.id);
+            }
+
+            Fido2 fido2 = new(new());
+
+            Fido2NetLib.Serialization.FidoSerializerContext.Default.
+
+            var options = fido2.GetAssertionOptions(
+                request.allowCredentials.Where(x => x.type is CredentialTypePublicKey).Select(x => new PublicKeyCredentialDescriptor(Convert.FromBase64String(x.id)) { Type = PublicKeyCredentialType.PublicKey }),
+                Enum.TryParse<UserVerificationRequirement>(request.userVerification, true, out var userVerification) ? userVerification : null,
+                new AuthenticationExtensionsClientInputs() { AppID = request.extensions.appid, UserVerificationMethod = request.extensions.uvm });
+
+            options.RpId = request.rpId;
+            options.Challenge = Encoding.UTF8.GetBytes(request.challenge);
+
+            AuthenticatorAssertionRawResponse clientResponse = new()
+            {
+                Id = Encoding.UTF8.GetBytes(request.rpId),
+                //Extensions = new AuthenticationExtensionsClientOutputs
+                //{
+                //    AppID = request.extensions.appid,
+                //    UserVerificationMethod = request.extensions.uvm
+                //},
+                Type = PublicKeyCredentialType.PublicKey,
+                Response = new()
+            };
+
+            //var result = await fido2.MakeAssertionAsync(clientResponse, options, options.Challenge, 0, async (args, ct) =>
+            //{
+            //    return false;
+            //});
+
+            // https://learn.microsoft.com/en-us/windows/apps/develop/security/windows-hello-login
+            // https://github.com/Keeper-Security/keeper-sdk-dotnet/blob/87ca142c756580451a3017360d7c10122d559913/Cli/Utils.cs#L566
+            return "";
         }
     }
 
