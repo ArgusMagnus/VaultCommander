@@ -22,7 +22,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using VaultCommander.Commands;
-using Windows.Security.Credentials;
 
 namespace VaultCommander.Vaults;
 
@@ -358,46 +357,60 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         {
             const string CredentialTypePublicKey = "public-key";
 
-            if (!await KeyCredentialManager.IsSupportedAsync())
-                return "";
-
-            foreach (var cred in request.allowCredentials)
+            var clientData = new AuthenticatorResponse
             {
-                var result = await KeyCredentialManager.OpenAsync(cred.id);
-            }
+                Type = SecurityKeyClientData.GET_ASSERTION,
+                Challenge = Base64Url.Decode(request.challenge),
+                Origin = request.extensions.appid
+            };
 
-            Fido2 fido2 = new(new());
+            Fido2 fido2 = new(new() { Origins = [clientData.Origin] });
 
-            Fido2NetLib.Serialization.FidoSerializerContext.Default.
+            var allowedCredentials = request.allowCredentials
+                .Where(x => x.type is CredentialTypePublicKey)
+                .Select(x => new PublicKeyCredentialDescriptor(Base64Url.Decode(x.id)) { Type = PublicKeyCredentialType.PublicKey })
+                .ToList();
 
             var options = fido2.GetAssertionOptions(
-                request.allowCredentials.Where(x => x.type is CredentialTypePublicKey).Select(x => new PublicKeyCredentialDescriptor(Convert.FromBase64String(x.id)) { Type = PublicKeyCredentialType.PublicKey }),
-                Enum.TryParse<UserVerificationRequirement>(request.userVerification, true, out var userVerification) ? userVerification : null,
-                new AuthenticationExtensionsClientInputs() { AppID = request.extensions.appid, UserVerificationMethod = request.extensions.uvm });
+                    allowedCredentials,
+                    Enum.TryParse<UserVerificationRequirement>(request.userVerification, true, out var userVerification) ? userVerification : null,
+                    new AuthenticationExtensionsClientInputs() { AppID = request.extensions.appid, UserVerificationMethod = request.extensions.uvm });
 
             options.RpId = request.rpId;
-            options.Challenge = Encoding.UTF8.GetBytes(request.challenge);
+            options.Challenge = clientData.Challenge;
+            options.Timeout = (uint)TimeSpan.FromMinutes(2).TotalMilliseconds;
+
+            var authData = new AuthenticatorData(SHA256.HashData(Encoding.UTF8.GetBytes(options.RpId)), default, 0, new AttestedCredentialData());
 
             AuthenticatorAssertionRawResponse clientResponse = new()
             {
-                Id = Encoding.UTF8.GetBytes(request.rpId),
-                //Extensions = new AuthenticationExtensionsClientOutputs
-                //{
-                //    AppID = request.extensions.appid,
-                //    UserVerificationMethod = request.extensions.uvm
-                //},
+                Id = allowedCredentials.First().Id,
+                RawId = allowedCredentials.First().Id,
                 Type = PublicKeyCredentialType.PublicKey,
                 Response = new()
+                {
+                    ClientDataJson = JsonSerializer.SerializeToUtf8Bytes(clientData),
+                    AuthenticatorData = JsonSerializer.SerializeToUtf8Bytes(authData)
+                }
             };
 
-            //var result = await fido2.MakeAssertionAsync(clientResponse, options, options.Challenge, 0, async (args, ct) =>
-            //{
-            //    return false;
-            //});
+            try
+            {
+                await fido2.MakeAssertionAsync(clientResponse, options, allowedCredentials.First().Id, 0, async (args, ct) =>
+                {
+                    return false;
+                });
 
-            // https://learn.microsoft.com/en-us/windows/apps/develop/security/windows-hello-login
-            // https://github.com/Keeper-Security/keeper-sdk-dotnet/blob/87ca142c756580451a3017360d7c10122d559913/Cli/Utils.cs#L566
-            return "";
+                //var result = await fido2.MakeAssertionAsync(clientResponse, options, options.Challenge, 0, async (args, ct) =>
+                //{
+                //    return false;
+                //});
+
+                // https://learn.microsoft.com/en-us/windows/apps/develop/security/windows-hello-login
+                // https://github.com/Keeper-Security/keeper-sdk-dotnet/blob/87ca142c756580451a3017360d7c10122d559913/Cli/Utils.cs#L566
+                return "";
+            }
+            catch when (Debugger.IsAttached) { throw; }
         }
     }
 
