@@ -33,7 +33,7 @@ sealed partial class MainWindow : Window
     readonly IReadOnlyDictionary<string, IVault> _vaultsByUriScheme;
     readonly string[] _arguments;
 
-    bool _hideOnCommandExecute = false;
+    bool _hideOnCommandExecute = true;
     bool _cancelClose = true;
     CurrentWindowInformationWindow? _currentWindowInfoWindow;
 
@@ -48,6 +48,7 @@ sealed partial class MainWindow : Window
         _notifyIcon.Text = Title;
         _notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
         _notifyIcon.MouseClick += OnNotifyIconClicked;
+        _notifyIcon.BalloonTipClicked += (_, _) => Show();
 
         var item = new WinForms.ToolStripMenuItem { Text = "Beenden" };
         item.Click += (_, args) => OnMenuExitClicked(null, null);
@@ -63,6 +64,9 @@ sealed partial class MainWindow : Window
 
         Loaded += OnLoaded;
     }
+
+    internal void ShowBalloonTip(string title, string text, WinForms.ToolTipIcon icon)
+        => _notifyIcon.ShowBalloonTip(0, title, text, icon);
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

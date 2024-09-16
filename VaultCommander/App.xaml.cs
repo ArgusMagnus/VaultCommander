@@ -25,6 +25,8 @@ sealed partial class App : Application
             base.OnStartup(e);
             Current.MainWindow = new MainWindow(e.Args);
             Current.MainWindow.Show();
+            Current.MainWindow.Hide();
+            ((MainWindow)Current.MainWindow).ShowBalloonTip(nameof(VaultCommander), $"{nameof(VaultCommander)} gestartet", System.Windows.Forms.ToolTipIcon.Info);
         }
         else
         {
