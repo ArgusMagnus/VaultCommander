@@ -1,18 +1,11 @@
-﻿using System;
+﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
-using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using VaultCommander.Commands;
 
 namespace VaultCommander;
@@ -27,7 +20,7 @@ sealed partial class ConfigureRdpDialog : Window
 
     public ConfigureRdpDialog(IEnumerable<ScreenInfo> screens)
     {
-        DataContext = (_vm = new(screens));
+        DataContext = _vm = new(screens);
         InitializeComponent();
 
         var minX = screens.Min(x => x.Left);
@@ -103,8 +96,32 @@ sealed partial class ConfigureRdpDialog : Window
         public bool UseMultipleScreens { get => _useMultipleScreens; set => SetProperty(ref _useMultipleScreens, value); }
 
         public IEnumerable<ScreenInfoVM> Screens { get; }
+        bool _disableUdp;
+        public bool DisableUdp { get => _disableUdp; set => SetProperty(ref _disableUdp, value, OnDisableUdpChanged); }
 
-        public ViewModel(IEnumerable<ScreenInfo> screens) => Screens = screens.Select(x => new ScreenInfoVM(this, x)).ToList();
+        void OnDisableUdpChanged(bool oldValue, bool newValue)
+        {
+            var cmd = $@"Set-ItemProperty -LiteralPath 'HKLM:\{RegKey}' -Name '{RegValue}' -Value {(newValue ? 1 : 0)}";
+            using var process = Process.Start(new ProcessStartInfo { FileName = "powershell", UseShellExecute = true, Verb = "runas", ArgumentList = { "-ExecutionPolicy", "ByPass", "-Command", cmd } });
+            process?.WaitForExit();
+            DisableUdp = GetDisableUdp(Registry.LocalMachine) ?? GetDisableUdp(Registry.CurrentUser) ?? false;
+        }
+
+        const string RegKey = @"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\Client";
+        const string RegValue = "fClientDisableUDP";
+        static bool? GetDisableUdp(RegistryKey root)
+        {
+            using var regKey = root.OpenSubKey(RegKey);
+            if (regKey?.GetValue(RegValue) is int disableUdp)
+                return disableUdp is not 0;
+            return null;
+        }
+
+        public ViewModel(IEnumerable<ScreenInfo> screens)
+        {
+            Screens = screens.Select(x => new ScreenInfoVM(this, x)).ToList();
+            _disableUdp = GetDisableUdp(Registry.LocalMachine) ?? GetDisableUdp(Registry.CurrentUser) ?? false;
+        }
     }
 
     sealed class ScreenInfoVM : NotifyPropertyChanged

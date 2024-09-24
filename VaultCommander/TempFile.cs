@@ -11,9 +11,12 @@ sealed class TempFile : IDisposable
 {
     public string FullName { get; }
 
-    public TempFile()
+    public TempFile(string? extension = null)
     {
-        FullName = Path.GetTempFileName();
+        if (string.IsNullOrEmpty(extension))
+            FullName = Path.GetTempFileName();
+        else
+            FullName = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + extension);
     }
 
     public void Dispose()

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -30,7 +31,7 @@ sealed class RdpCommand : Command<RdpCommand.Arguments>
             .Select(x => new ScreenInfo(int.Parse(Regex.Match(x.DeviceName, @"^\\\\.\\DISPLAY(?<No>\d+)$").Groups["No"].Value) - 1, x.Primary, x.Bounds.Left, x.Bounds.Top, x.Bounds.Width, x.Bounds.Height))
             .ToList();
 
-        if (screens.Count > 1)
+        //if (screens.Count > 1)
         {
             var dlg = new ConfigureRdpDialog(screens);
             if (dlg.ShowDialog() is not true)
