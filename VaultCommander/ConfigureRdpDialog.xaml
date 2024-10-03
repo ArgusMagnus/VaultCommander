@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:VaultCommander"
         mc:Ignorable="d"
-        Title="ConfigureRdpDialog" SizeToContent="WidthAndHeight" WindowStartupLocation="CenterScreen">
+        Title="RDP konfigurieren" SizeToContent="WidthAndHeight" WindowStartupLocation="CenterScreen">
     <StackPanel Margin="10">
         <StackPanel Orientation="Horizontal">
             <GroupBox Header="Bildschirme">
