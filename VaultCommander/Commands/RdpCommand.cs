@@ -39,13 +39,21 @@ sealed class RdpCommand : Command<RdpCommand.Arguments>
             screens = dlg.SelectedScreens.OrderBy(x => x.IsPrimary ? 0 : 1).ThenBy(x => x.Index).ToList();
         }
 
+        var configLines = $"""
+            full address:s:{args.Host}
+            selectedmonitors:s:{string.Join(',', screens.Select(x => x.Index))}
+            use multimon:i:{(screens.Count is 0 ? '0' : '1')}
+            screen mode id:i:2                        
+            redirectprinters:i:0
+            authentication level:i:0
+            """.Split('\n').Select(x => x.Trim()).ToList();
+
+        var filter = configLines.Select(x => $"{x.Split(':', 2).First()}:").ToList();
+
         var defaultRdpPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Default.rdp");
         var lines = (File.Exists(defaultRdpPath) ? await File.ReadAllLinesAsync(defaultRdpPath) : Enumerable.Empty<string>())
-            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith("full address:s:") && !x.StartsWith("selectedmonitors:s:") && !x.StartsWith("use multimon:i:") && !x.StartsWith("screen mode id:i:"))
-            .Append($"full address:s:{args.Host}")
-            .Append($"selectedmonitors:s:{string.Join(',', screens.Select(x => x.Index))}")
-            .Append($"use multimon:i:{(screens.Count is 0 ? '0' : '1')}")
-            .Append("screen mode id:i:2") // enable fullscreen
+            .Where(x => !string.IsNullOrWhiteSpace(x) && !filter.Any(y => x.StartsWith(y)))
+            .Concat(configLines)
             .ToList();
 
         using var rdpPath = new TempFile();
