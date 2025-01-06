@@ -229,10 +229,11 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
         .Concat(item.Fields.Select(x => new RecordField(x.Name, x.Value)))
         .ToList());
 
-    sealed class Factory : IVaultFactory
-    {
-        public IVault CreateVault(string dataDirectoryRoot) => new BitwardenVault(dataDirectoryRoot);
-    }
+    // disable this vault for now
+    //sealed class Factory : IVaultFactory
+    //{
+    //    public IVault CreateVault(string dataDirectoryRoot) => new BitwardenVault(dataDirectoryRoot);
+    //}
 
     enum ItemType
     {
