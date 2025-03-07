@@ -1,6 +1,6 @@
 ﻿using Enterprise;
 using KeeperSecurity.Authentication;
-using KeeperSecurity.Authentication.Async;
+using KeeperSecurity.Authentication.Sync;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
@@ -31,7 +31,8 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     public string UriFieldName => nameof(VaultCommander);
 
     readonly string _dataDirectory;
-    readonly Auth _auth;
+    readonly AuthUi _authUi;
+    readonly AuthSync _auth;
     readonly KeeperStorage _storage;
     readonly Lazy<Task<VaultOnline>> _vault;
 
@@ -39,16 +40,21 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     {
         _dataDirectory = Path.Combine(dataDirectoryRoot, VaultName);
         Directory.CreateDirectory(_dataDirectory);
-        _auth = new(new AuthUi(_dataDirectory), new JsonConfigurationStorage(new JsonConfigurationCache(new JsonConfigurationFileLoader(Path.Combine(_dataDirectory, "storage.json")))
+        var configStorage = new JsonConfigurationStorage(Path.Combine(_dataDirectory, "storage.json")) 
         {
             ConfigurationProtection = new ConfigurationProtectionFactory()
-        }))
-        { 
+        };
+        _auth = new AuthSync(configStorage) { 
             ResumeSession = true
         };
+
+        _authUi = new AuthUi(_dataDirectory);
+
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
         _vault = new(VaultFactory);
-        _storage = new(_auth.Storage.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
+        var config = _auth.Storage.Get();
+
+        _storage = new(config.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
     }
 
     public async ValueTask DisposeAsync()
@@ -79,12 +85,13 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
     public Task<StatusDto?> GetStatus()
     {
+        var config = _auth.Storage.Get();
         var status = Status.Unauthenticated;
         if (_auth.IsAuthenticated())
             status = Status.Unlocked;
-        else if (!string.IsNullOrEmpty(_auth.Storage.LastLogin))
+        else if (!string.IsNullOrEmpty(config.LastLogin))
             status = Status.Locked;
-        return Task.FromResult<StatusDto?>(new(_auth.Storage.LastServer, null, _auth.Storage.LastLogin, null, status));
+        return Task.FromResult<StatusDto?>(new(config.LastServer, null, config.LastLogin, null, status));
     }
 
     public async Task<StatusDto?> Initialize()
@@ -96,16 +103,101 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
     public async Task<StatusDto?> Login()
     {
-        var (user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
+        var config = _auth.Storage.Get();
+
+        var (user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, config.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
         if (!string.IsNullOrEmpty(user))
         {
-            var ui = (AuthUi)_auth.Ui;
+            var ui = _authUi;
             ui.Reset();
+
             using (ui.ProgressBox = await ProgressBox.Show())
             {
                 ui.ProgressBox.DetailText = "Anmelden...";
                 ui.ProgressBox.DetailProgress = double.NaN;
+
+                using var token = new CancellationTokenSource();
+                var signal = new ManualResetEventSlim(false);
+                using var authUi = new AuthSyncUi(signal.Set);
+                _auth.UiCallback = authUi;
+
                 await _auth.Login(user, []);
+                while (_auth.IsCompleted)
+                {
+                    switch (_auth.Step)
+                    {
+                        case DeviceApprovalStep das:
+                            {
+                                //await das.SendPush(DeviceApprovalChannel.Email);
+                                //await das.SendPush(DeviceApprovalChannel.TwoFactorAuth);
+                                await das.SendPush(DeviceApprovalChannel.KeeperPush);
+                                ui.ProgressBox.DetailText = $"Anfrage (...) wurde versandt. Auf Genehmigung warten...";
+                                ui.ProgressBox.DetailProgress = double.NaN;
+                            }
+                            break;
+
+                        case TwoFactorStep tfs:
+                            {
+                                tfs.Duration = TwoFactorDuration.Forever;
+                                var phoneNumber = string.Empty;
+                                TwoFactorChannel? codeChannel = null;
+                                foreach (var ch in tfs.Channels)
+                                {
+                                    if (codeChannel == null && tfs.IsCodeChannel(ch))
+                                    {
+                                        codeChannel = ch;
+                                        phoneNumber = tfs.GetPhoneNumber(ch);
+                                    }
+                                    foreach (var pch in tfs.GetChannelPushActions(ch))
+                                    {
+                                        try
+                                        {
+                                            await tfs.SendPush(pch);
+                                        }
+                                        catch { }
+                                    }
+
+                                }
+                                if (codeChannel != null)
+                                {
+                                    var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(
+                                        () => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', phoneNumber))).Task.ConfigureAwait(false);
+                                    if (pw != null)
+                                    {
+                                        try
+                                        {
+                                            await tfs.SendCode(codeChannel.Value, pw.GetAsClearText());
+                                            continue;    // the login step is already changed at this point
+                                        }
+                                        catch {
+                                            // invalid code
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+
+                        case PasswordStep ps:
+                            {
+                                var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Username)).Task.ConfigureAwait(false);
+                                if (pw is null) {
+                                    break;
+                                }
+                                try {
+                                    await ps.VerifyPassword(pw.GetAsClearText());
+                                    continue;
+                                }
+                                catch { 
+                                    // invalid password
+                                }
+                            }
+                            break;
+                    }
+                    signal.Reset();
+                    signal.Wait(token.Token);
+                }
+
+                _auth.UiCallback = null ;
                 _storage.PersonalScopeUid = _auth.Username;
             }
         }
@@ -150,7 +242,11 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             if (item is null && data.Uid == uid)
                 item = ToRecord(data);
 
-            var hasCommandField = data.Custom.Any(x => validCommandSchemes.Any(y => x.Value?.StartsWith(y, StringComparison.OrdinalIgnoreCase) is true));
+            var hasCommandField = data.Custom
+                .OfType<TypedField<string>>()
+                .Where(x => x.Count > 0)
+                .Where(x => !string.IsNullOrEmpty(x.TypedValue))
+                .Any(x => validCommandSchemes.Any(y => x.TypedValue.StartsWith(y, StringComparison.OrdinalIgnoreCase) is true));
             if (!hasCommandField)
                 continue;
 
@@ -178,7 +274,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             foreach (var field in fields)
             {
                 yield return new(
-                    field.Type switch
+                    field.FieldName switch
                     {
                         "login" => nameof(IArgumentsUsername.Username),
                         _ => string.IsNullOrEmpty(field.FieldLabel) ? field.FieldName : field.FieldLabel
@@ -186,11 +282,12 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                     field switch
                     {
                         TypedField<FieldTypeHost> host => string.IsNullOrEmpty(host.TypedValue.Port) ? host.TypedValue.HostName : $"{host.TypedValue.HostName}:{host.TypedValue.Port}",
-                        _ => field.Value
+                        ISerializeTypedField sertf => sertf.ExportTypedField(),
+                        _ => field.ObjectValue?.ToString()
                     });
 
-                if (includeTotp && field.Type == "oneTimeCode" && !string.IsNullOrEmpty(field.Value))
-                    yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(field.Value).Item1);
+                if (includeTotp && field.FieldName == "oneTimeCode" && field is TypedField<string> stf && !string.IsNullOrEmpty(stf.TypedValue))
+                    yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(stf.TypedValue).Item1);
             }
         }
     }
@@ -217,7 +314,25 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         }
     }
 
-    sealed class AuthUi(string dataDir) : IAuthUI, IAuthSsoUI
+    sealed class AuthSyncUi : IAuthSyncCallback, IDisposable
+    {
+        private Action? _callback;
+        public AuthSyncUi(Action callback) {
+            _callback = callback;
+        }
+        public void OnNextStep()
+        {
+            _callback?.Invoke();
+        }
+
+        void IDisposable.Dispose()
+        {
+            _callback = null;
+        }
+    }
+
+
+    sealed class AuthUi(string dataDir) 
     {
         readonly string _dataDir = dataDir;
 

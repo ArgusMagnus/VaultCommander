@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Keeper.Sdk" Version="1.0.4" />
+    <PackageReference Include="Keeper.Sdk" Version="1.1.0" />
     <PackageReference Include="MailKit" Version="4.6.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.6" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2535.41" />

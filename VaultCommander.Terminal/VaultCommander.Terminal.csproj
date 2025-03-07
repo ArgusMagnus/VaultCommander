@@ -13,6 +13,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Keeper.Sdk" Version="1.1.0" />
+  </ItemGroup>
+
   <!--<ItemGroup>
     <COMReference Include="IWshRuntimeLibrary">
       <WrapperTool>tlbimp</WrapperTool>
