@@ -1,6 +1,6 @@
 ﻿using Enterprise;
 using KeeperSecurity.Authentication;
-using KeeperSecurity.Authentication.Async;
+using KeeperSecurity.Authentication.Sync;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
@@ -16,9 +16,11 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows;
 using VaultCommander.Commands;
+using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace VaultCommander.Vaults;
 
@@ -31,7 +33,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     public string UriFieldName => nameof(VaultCommander);
 
     readonly string _dataDirectory;
-    readonly Auth _auth;
+    readonly AuthSync _auth;
     readonly KeeperStorage _storage;
     readonly Lazy<Task<VaultOnline>> _vault;
 
@@ -39,16 +41,16 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     {
         _dataDirectory = Path.Combine(dataDirectoryRoot, VaultName);
         Directory.CreateDirectory(_dataDirectory);
-        _auth = new(new AuthUi(_dataDirectory), new JsonConfigurationStorage(new JsonConfigurationCache(new JsonConfigurationFileLoader(Path.Combine(_dataDirectory, "storage.json")))
+        _auth = new(new JsonConfigurationStorage(Path.Combine(_dataDirectory, "storage.json"))
         {
             ConfigurationProtection = new ConfigurationProtectionFactory()
-        }))
-        { 
+        })
+        {
             ResumeSession = true
         };
         _auth.Endpoint.DeviceName = $"{Environment.MachineName}_{nameof(VaultCommander)}";
+        _storage = new(_auth.Storage.Get().LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
         _vault = new(VaultFactory);
-        _storage = new(_auth.Storage.LastLogin, Path.Combine(_dataDirectory, "storage.sqlite"));
     }
 
     public async ValueTask DisposeAsync()
@@ -80,32 +82,35 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     public Task<StatusDto?> GetStatus()
     {
         var status = Status.Unauthenticated;
+        var storage = _auth.Storage.Get();
         if (_auth.IsAuthenticated())
             status = Status.Unlocked;
-        else if (!string.IsNullOrEmpty(_auth.Storage.LastLogin))
+        else if (!string.IsNullOrEmpty(storage.LastLogin))
             status = Status.Locked;
-        return Task.FromResult<StatusDto?>(new(_auth.Storage.LastServer, null, _auth.Storage.LastLogin, null, status));
+        return Task.FromResult<StatusDto?>(new(storage.LastServer, null, storage.LastLogin, null, status));
     }
 
     public async Task<StatusDto?> Initialize()
     {
-        await _storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
-        await _storage.Database.MigrateAsync();
+        //await _storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
+        await _storage.Database.MigrateAsync().ConfigureAwait(false);
         return await GetStatus();
     }
 
     public async Task<StatusDto?> Login()
     {
-        var (user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
+        var storage = _auth.Storage.Get();
+        var (user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, storage.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
         if (!string.IsNullOrEmpty(user))
         {
-            var ui = (AuthUi)_auth.Ui;
-            ui.Reset();
-            using (ui.ProgressBox = await ProgressBox.Show())
+            using (var progressBox = await ProgressBox.Show())
+            using (var uiCallback = new AuthSyncUiCallback(_auth, progressBox, _dataDirectory))
             {
-                ui.ProgressBox.DetailText = "Anmelden...";
-                ui.ProgressBox.DetailProgress = double.NaN;
+                _auth.UiCallback = uiCallback;
+                progressBox.DetailText = "Anmelden...";
+                progressBox.DetailProgress = double.NaN;
                 await _auth.Login(user, []);
+                await uiCallback.Wait();
                 _storage.PersonalScopeUid = _auth.Username;
             }
         }
@@ -150,7 +155,9 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             if (item is null && data.Uid == uid)
                 item = ToRecord(data);
 
-            var hasCommandField = data.Custom.Any(x => validCommandSchemes.Any(y => x.Value?.StartsWith(y, StringComparison.OrdinalIgnoreCase) is true));
+            var hasCommandField = data.Custom
+                .OfType<TypedField<string>>()
+                .Any(x => validCommandSchemes.Any(y => x.TypedValue?.StartsWith(y, StringComparison.OrdinalIgnoreCase) is true));
             if (!hasCommandField)
                 continue;
 
@@ -178,7 +185,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
             foreach (var field in fields)
             {
                 yield return new(
-                    field.Type switch
+                    field.FieldName switch
                     {
                         "login" => nameof(IArgumentsUsername.Username),
                         _ => string.IsNullOrEmpty(field.FieldLabel) ? field.FieldName : field.FieldLabel
@@ -186,11 +193,12 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                     field switch
                     {
                         TypedField<FieldTypeHost> host => string.IsNullOrEmpty(host.TypedValue.Port) ? host.TypedValue.HostName : $"{host.TypedValue.HostName}:{host.TypedValue.Port}",
-                        _ => field.Value
+                        ISerializeTypedField sertf => sertf.ExportTypedField(),
+                        _ => field.ObjectValue?.ToString()
                     });
 
-                if (includeTotp && field.Type == "oneTimeCode" && !string.IsNullOrEmpty(field.Value))
-                    yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(field.Value).Item1);
+                if (includeTotp && field.FieldName == "oneTimeCode" && field is TypedField<string> stf && !string.IsNullOrEmpty(stf.TypedValue))
+                    yield return new(nameof(IArgumentsTotp.Totp), CryptoUtils.GetTotpCode(stf.TypedValue).Item1);
             }
         }
     }
@@ -217,132 +225,120 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
         }
     }
 
-    sealed class AuthUi(string dataDir) : IAuthUI, IAuthSsoUI
+    sealed class AuthSyncUiCallback(AuthSync auth, ProgressBox.IViewModel progressBox, string dataDir) : IAuthSyncCallback, IDisposable
     {
+        readonly AuthSync _auth = auth;
+        readonly ProgressBox.IViewModel _progressBox = progressBox;
         readonly string _dataDir = dataDir;
 
-        public ProgressBox.IViewModel? ProgressBox { get; set; }
+        readonly TaskCompletionSource _tcs = new();
+        readonly CancellationTokenSource _cts = new();
 
-        public async Task<bool> WaitForDeviceApproval(IDeviceApprovalChannelInfo[] channels, CancellationToken token)
+        public Task Wait() => _tcs.Task.WaitAsync(_cts.Token);
+
+        async void IAuthSyncCallback.OnNextStep()
         {
-            var usedChannels = channels.OfType<IDeviceApprovalPushInfo>().ToList();
-            if (!usedChannels.Any())
-                return false;
-
-            if (ProgressBox is not null)
+            switch (_auth.Step)
             {
-                ProgressBox.DetailText = $"Anfrage ({string.Join(", ", usedChannels.Select(x => x.Channel))}) wurde versandt. Auf Genehmigung warten...";
-                ProgressBox.DetailProgress = double.NaN;
-            }
-            await Task.WhenAll(usedChannels.Select(x => Task.Run(() => x.InvokeDeviceApprovalPushAction()))).ConfigureAwait(false);
-            return true;
-        }
+                default:
+                    _tcs.TrySetResult();
+                    _cts.Cancel();
+                    break;
 
-        public async Task<bool> WaitForTwoFactorCode(ITwoFactorChannelInfo[] channels, CancellationToken token)
-        {
-            var codeChannel = channels.OfType<ITwoFactorAppCodeInfo>().FirstOrDefault();
-            if (codeChannel is null)
-                return false;
+                case ReadyToLoginStep:
+                    break;
 
-            if (codeChannel is ITwoFactorPushInfo pushInfo)
-            {
-                foreach (var action in pushInfo.SupportedActions)
-                    await pushInfo.InvokeTwoFactorPushAction(action);
-            }
-
-            codeChannel.Duration = TwoFactorDuration.Forever;
-            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', codeChannel.ApplicationName, codeChannel.PhoneNumber))).Task.ConfigureAwait(false);
-            if (pw is null)
-                return false;
-            try { await codeChannel.InvokeTwoFactorCodeAction(pw.GetAsClearText()); }
-            catch (KeeperApiException) { }
-            return true;
-        }
-
-        public async Task<bool> WaitForUserPassword(IPasswordInfo info, CancellationToken token)
-        {
-            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, info.Username)).Task.ConfigureAwait(false);
-            if (pw is null)
-                return false;
-            await info.InvokePasswordActionDelegate(pw.GetAsClearText());
-            return true;
-        }
-
-        public void SsoLogoutUrl(string url)
-        {
-            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
-        }
-
-        public async Task<bool> WaitForSsoToken(ISsoTokenActionInfo actionInfo, CancellationToken cancellationToken)
-        {
-            var tcs = new TaskCompletionSource<string?>();
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                var webView = new WebView2();
-                var window = new Window { Content = webView, Width = 500, Height = 800 };
-                window.Loaded += async (_, _) =>
-                {
-                    var webViewOptions = new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
-                    var env = await CoreWebView2Environment.CreateAsync(null, _dataDir, webViewOptions);
-                    await webView.EnsureCoreWebView2Async(env);
-                    webView.CoreWebView2.DocumentTitleChanged += (_, _) => window.Title = webView.CoreWebView2.DocumentTitle;
-                    webView.Source = new(actionInfo.SsoLoginUrl);
-                };
-                window.Closed += (_, _) => tcs.TrySetResult(null);
-
-                async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs args)
-                {
-                    var token = JsonSerializer.Deserialize<string?>(await webView.ExecuteScriptAsync("token"));
-                    if (!string.IsNullOrEmpty(token) && tcs.TrySetResult(token))
+                case DeviceApprovalStep { Channels: { Length: > 0 } } deviceApprovalStep:
                     {
-                        webView.NavigationCompleted -= OnNavigationCompleted;
-                        window.Close();
+                        _progressBox.DetailText = $"Anfrage ({string.Join(", ", deviceApprovalStep.Channels)}) wurde versandt. Auf Genehmigung warten...";
+                        _progressBox.DetailProgress = double.NaN;
+                        foreach (var channel in deviceApprovalStep.Channels)
+                            await deviceApprovalStep.SendPush(channel).ConfigureAwait(false);
                     }
+                    break;
 
-                }
-                webView.NavigationCompleted += OnNavigationCompleted;
+                case TwoFactorStep { Channels: { Length: > 0 } } twoFactorStep:
+                    {
+                        twoFactorStep.Duration = TwoFactorDuration.Forever;
 
-                using (cancellationToken.Register(window.Close))
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                        window.ShowDialog();
-                }
-            });
+                        foreach (var action in twoFactorStep.Channels.SelectMany(twoFactorStep.GetChannelPushActions))
+                            await twoFactorStep.SendPush(action).ConfigureAwait(false);
 
-            var token = await tcs.Task;
-            if (string.IsNullOrEmpty(token))
-                return false;
-            await actionInfo.InvokeSsoTokenAction(token);
-            return true;
+                        foreach (var channel in twoFactorStep.Channels.Where(twoFactorStep.IsCodeChannel))
+                        {
+                            var phoneNumber = twoFactorStep.GetPhoneNumber(channel);
+                            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', channel, phoneNumber))).Task;
+                            if (pw is null)
+                                continue;
+
+                            try { await twoFactorStep.SendCode(channel, pw.GetAsClearText()); }
+                            catch (KeeperApiException) { }
+                            break;
+                        }
+                    }
+                    break;
+
+                case PasswordStep passwordStep:
+                    {
+                        var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Username)).Task.ConfigureAwait(false);
+                        if (pw is not null)
+                            await passwordStep.VerifyPassword(pw.GetAsClearText());
+                    }
+                    break;
+
+                case SsoTokenStep ssoTokenStep:
+                    {
+                        var tcs = new TaskCompletionSource<string?>();
+                        await Application.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            var webView = new WebView2();
+                            var window = new Window { Content = webView, Width = 500, Height = 800 };
+                            window.Loaded += async (_, _) =>
+                            {
+                                var webViewOptions = new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = true };
+                                var env = await CoreWebView2Environment.CreateAsync(null, _dataDir, webViewOptions);
+                                await webView.EnsureCoreWebView2Async(env);
+                                webView.CoreWebView2.DocumentTitleChanged += (_, _) => window.Title = webView.CoreWebView2.DocumentTitle;
+                                webView.Source = new(ssoTokenStep.SsoLoginUrl);
+                            };
+                            window.Closed += (_, _) => tcs.TrySetResult(null);
+
+                            async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs args)
+                            {
+                                var token = JsonSerializer.Deserialize<string?>(await webView.ExecuteScriptAsync("token"));
+                                if (!string.IsNullOrEmpty(token) && tcs.TrySetResult(token))
+                                {
+                                    webView.NavigationCompleted -= OnNavigationCompleted;
+                                    window.Close();
+                                }
+                            }
+                            webView.NavigationCompleted += OnNavigationCompleted;
+
+                            using (_cts.Token.Register(window.Close))
+                            {
+                                if (!_cts.IsCancellationRequested)
+                                    window.ShowDialog();
+                            }
+                        }).Task.ConfigureAwait(false);
+
+                        var token = await tcs.Task;
+                        if (!string.IsNullOrEmpty(token))
+                            await ssoTokenStep.SetSsoToken(token);
+                    }
+                    break;
+
+                case SsoDataKeyStep { Channels: { Length: > 0 } } ssoDataKeyStep:
+                    {
+                        _progressBox.DetailText = $"SSO Anfrage wurde versandt. Auf Genehmigung warten...";
+                        _progressBox.DetailProgress = double.NaN;
+                        foreach (var channel in ssoDataKeyStep.Channels)
+                            await ssoDataKeyStep.RequestDataKey(channel).ConfigureAwait(false);
+                    }
+                    break;
+            }
         }
 
-        bool _dataKeyRequested = false;
-
-        internal void Reset() => _dataKeyRequested = false;
-
-        public async Task<bool> WaitForDataKey(IDataKeyChannelInfo[] channels, CancellationToken token)
-        {
-            if (_dataKeyRequested)
-                return true;
-            var ssoChannel = channels.FirstOrDefault(x => x.Channel is DataKeyShareChannel.KeeperPush);
-            if (ssoChannel is null)
-                return false;
-
-            if (ProgressBox is not null)
-            {
-                ProgressBox.DetailText = $"Anfrage ({ssoChannel.Channel.SsoDataKeyShareChannelText()}) wurde versandt. Auf Genehmigung warten...";
-                ProgressBox.DetailProgress = double.NaN;
-            }
-
-            //var tcs = new TaskCompletionSource();
-            //await using (token.Register(tcs.SetResult))
-            {
-                await ssoChannel.InvokeGetDataKeyAction().ConfigureAwait(false);
-                _dataKeyRequested = true;
-                //await tcs.Task;
-            }
-            return true;
-        }
+        public void Dispose() => _cts.Cancel();
     }
 
     sealed class VaultUi : IVaultUi
