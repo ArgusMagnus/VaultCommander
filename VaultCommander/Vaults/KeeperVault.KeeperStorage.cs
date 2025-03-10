@@ -1,16 +1,23 @@
-﻿using KeeperSecurity.Vault;
+﻿using Google.Protobuf.WellKnownTypes;
+using KeeperSecurity.Storage;
+using KeeperSecurity.Vault;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Records;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Xml.Linq;
 
 namespace VaultCommander.Vaults;
 
 sealed partial class KeeperVault
 {
-    sealed class KeeperStorage : DbContext, IKeeperStorage
+    internal sealed class KeeperStorage : DbContext, IKeeperStorage
     {
         private DbSet<UserStorage> userStorage { get; init; } = null!;
         private Lazy<UserStorage> _userStorage;
@@ -46,31 +53,37 @@ sealed partial class KeeperVault
         public IEntityStorage<IStorageRecord> Records { get; }
 
         private DbSet<SharedFolderEntity> sharedFolders { get; init; } = null!;
-        public IEntityStorage<ISharedFolder> SharedFolders { get; }
+        public IEntityStorage<IStorageSharedFolder> SharedFolders { get; }
 
         private DbSet<EnterpriseTeamEntity> teams { get; init; } = null!;
-        public IEntityStorage<IEnterpriseTeam> Teams { get; }
+        public IEntityStorage<IStorageTeam> Teams { get; }
 
         private DbSet<NonSharedDataEntity> nonSharedData { get; init; } = null!;
-        public IEntityStorage<INonSharedData> NonSharedData { get; }
+        public IEntityStorage<IStorageNonSharedData> NonSharedData { get; }
 
         private DbSet<RecordMetadataEntity> recordKeys { get; init; } = null!;
-        public IPredicateStorage<IRecordMetadata> RecordKeys { get; }
+        public ILinkStorage<IStorageRecordKey> RecordKeys { get; }
 
-        private DbSet<SharedFolderKeyEntity> sharedFolderKeys { get;init; } = null!;
-        public IPredicateStorage<ISharedFolderKey> SharedFolderKeys { get; }
+        private DbSet<SharedFolderKeyEntity> sharedFolderKeys { get; init; } = null!;
+        public ILinkStorage<IStorageSharedFolderKey> SharedFolderKeys { get; }
 
         private DbSet<SharedFolderPermissionEntity> sharedFolderPermissions { get; init; } = null!;
-        public IPredicateStorage<ISharedFolderPermission> SharedFolderPermissions { get; }
+        public ILinkStorage<ISharedFolderPermission> SharedFolderPermissions { get; }
 
         private DbSet<FolderEntity> folders { get; init; } = null!;
-        public IEntityStorage<IFolder> Folders { get; }
+        public IEntityStorage<IStorageFolder> Folders { get; }
 
         private DbSet<FolderRecordLinkEntity> folderRecords { get; init; } = null!;
-        public IPredicateStorage<IFolderRecordLink> FolderRecords { get; }
+        public ILinkStorage<IStorageFolderRecord> FolderRecords { get; }
 
         private DbSet<RecordTypeEntity> recordTypes { get; init; } = null!;
-        public IEntityStorage<IRecordType> RecordTypes { get; }
+        public IEntityStorage<IStorageRecordType> RecordTypes { get; }
+
+        private DbSet<VaultSettingsEntity> vaultSettings { get; init; } = null!;
+        public IRecordStorage<IVaultSettings> VaultSettings { get; }
+
+        private DbSet<StorageUserEmailEntity> userEmails { get; init; } = null!;
+        public ILinkStorage<IStorageUserEmail> UserEmails { get; }
 
         readonly string _dbFilename;
 
@@ -79,15 +92,17 @@ sealed partial class KeeperVault
             _dbFilename = dbFilename;
             PersonalScopeUid = personalScopeUid ?? string.Empty;
             Records = new EntityStorage<IStorageRecord, RecordEntity>(this, records);
-            SharedFolders = new EntityStorage<ISharedFolder, SharedFolderEntity>(this, sharedFolders);
-            Teams = new EntityStorage<IEnterpriseTeam, EnterpriseTeamEntity>(this, teams);
-            NonSharedData = new EntityStorage<INonSharedData, NonSharedDataEntity>(this, nonSharedData);
-            RecordKeys = new PredicateStorage<IRecordMetadata, RecordMetadataEntity>(this, recordKeys);
-            SharedFolderKeys = new PredicateStorage<ISharedFolderKey, SharedFolderKeyEntity>(this, sharedFolderKeys);
+            SharedFolders = new EntityStorage<IStorageSharedFolder, SharedFolderEntity>(this, sharedFolders);
+            Teams = new EntityStorage<IStorageTeam, EnterpriseTeamEntity>(this, teams);
+            NonSharedData = new EntityStorage<IStorageNonSharedData, NonSharedDataEntity>(this, nonSharedData);
+            RecordKeys = new PredicateStorage<IStorageRecordKey, RecordMetadataEntity>(this, recordKeys);
+            SharedFolderKeys = new PredicateStorage<IStorageSharedFolderKey, SharedFolderKeyEntity>(this, sharedFolderKeys);
             SharedFolderPermissions = new PredicateStorage<ISharedFolderPermission, SharedFolderPermissionEntity>(this, sharedFolderPermissions);
-            Folders = new EntityStorage<IFolder, FolderEntity>(this, folders);
-            FolderRecords = new PredicateStorage<IFolderRecordLink, FolderRecordLinkEntity>(this, folderRecords);
-            RecordTypes = new EntityStorage<IRecordType, RecordTypeEntity>(this, recordTypes);
+            Folders = new EntityStorage<IStorageFolder, FolderEntity>(this, folders);
+            FolderRecords = new PredicateStorage<IStorageFolderRecord, FolderRecordLinkEntity>(this, folderRecords);
+            RecordTypes = new EntityStorage<IStorageRecordType, RecordTypeEntity>(this, recordTypes);
+            VaultSettings = new RecordStorage<IVaultSettings, VaultSettingsEntity>(this, vaultSettings);
+            UserEmails = new PredicateStorage<IStorageUserEmail, StorageUserEmailEntity>(this, userEmails);
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -119,15 +134,17 @@ sealed partial class KeeperVault
             base.OnModelCreating(modelBuilder);
 
             ConfigureEntityUid<IStorageRecord, RecordEntity>(modelBuilder);
-            ConfigureEntityUid<ISharedFolder, SharedFolderEntity>(modelBuilder);
-            ConfigureEntityUid<IEnterpriseTeam, EnterpriseTeamEntity>(modelBuilder);
-            ConfigureEntityUid<INonSharedData, NonSharedDataEntity>(modelBuilder);
-            ConfigureEntityUidLink<IRecordMetadata, RecordMetadataEntity>(modelBuilder);
-            ConfigureEntityUidLink<ISharedFolderKey, SharedFolderKeyEntity>(modelBuilder);
+            ConfigureEntityUid<IStorageSharedFolder, SharedFolderEntity>(modelBuilder);
+            ConfigureEntityUid<IStorageTeam, EnterpriseTeamEntity>(modelBuilder);
+            ConfigureEntityUid<IStorageNonSharedData, NonSharedDataEntity>(modelBuilder);
+            ConfigureEntityUidLink<IStorageRecordKey, RecordMetadataEntity>(modelBuilder);
+            ConfigureEntityUidLink<IStorageSharedFolderKey, SharedFolderKeyEntity>(modelBuilder);
             ConfigureEntityUidLink<ISharedFolderPermission, SharedFolderPermissionEntity>(modelBuilder);
-            ConfigureEntityUid<IFolder, FolderEntity>(modelBuilder);
-            ConfigureEntityUidLink<IFolderRecordLink, FolderRecordLinkEntity>(modelBuilder);
-            ConfigureEntityUid<IRecordType, RecordTypeEntity>(modelBuilder);
+            ConfigureEntityUid<IStorageFolder, FolderEntity>(modelBuilder);
+            ConfigureEntityUidLink<IStorageFolderRecord, FolderRecordLinkEntity>(modelBuilder);
+            ConfigureEntityUid<IStorageRecordType, RecordTypeEntity>(modelBuilder);
+            ConfigureEntity<IVaultSettings, VaultSettingsEntity>(modelBuilder).HasKey(x => x.PersonalScopeUid);
+            ConfigureEntityUidLink<IStorageUserEmail, StorageUserEmailEntity>(modelBuilder);
             modelBuilder.Entity<UserStorage>().HasKey(x => x.PersonalScopeUid);
 
             static EntityTypeBuilder<T> ConfigureEntity<I, T>(ModelBuilder modelBuilder) where T : class, I, IEntity<I>
@@ -139,7 +156,7 @@ sealed partial class KeeperVault
                 return typeBuilder;
             }
 
-            static EntityTypeBuilder<T> ConfigureEntityUid<I,T>(ModelBuilder modelBuilder) where T : class, I, IEntity<I>, IUid
+            static EntityTypeBuilder<T> ConfigureEntityUid<I, T>(ModelBuilder modelBuilder) where T : class, I, IEntity<I>, IUid
             {
                 var typeBulder = ConfigureEntity<I, T>(modelBuilder);
                 typeBulder.HasKey(x => new { x.PersonalScopeUid, x.Uid });
@@ -185,24 +202,24 @@ sealed partial class KeeperVault
                 _set = set;
             }
 
-            public void DeleteUids(IEnumerable<string> uids)
+            void IEntityStorage<I>.DeleteUids(IEnumerable<string> uids)
             {
                 var remove = _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && uids.Contains(x.Uid)).ToList();
                 _set.RemoveRange(remove);
                 _dbContext.SaveChanges();
             }
 
-            public IEnumerable<I> GetAll()
+            IEnumerable<I> IEntityStorage<I>.GetAll()
             {
                 return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid);
             }
 
-            public I GetEntity(string uid)
+            I IEntityStorage<I>.GetEntity(string uid)
             {
                 return _set.Find(_dbContext.PersonalScopeUid, uid)!;
             }
 
-            public void PutEntities(IEnumerable<I> entities)
+            void IEntityStorage<I>.PutEntities(IEnumerable<I> entities)
             {
                 foreach (var value in entities)
                 {
@@ -220,7 +237,7 @@ sealed partial class KeeperVault
             }
         }
 
-        sealed class PredicateStorage<I, T> : IPredicateStorage<I>
+        sealed class PredicateStorage<I, T> : ILinkStorage<I>
             where I : IUidLink
             where T : class, I, IEntity<I>, new()
         {
@@ -272,6 +289,13 @@ sealed partial class KeeperVault
                 return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && x.SubjectUid == subjectUid);
             }
 
+#pragma warning disable CS8766 // Nullability of reference types in return type doesn't match implicitly implemented member (possibly because of nullability attributes).
+            public I? GetLink(IUidLink link)
+#pragma warning restore CS8766 // Nullability of reference types in return type doesn't match implicitly implemented member (possibly because of nullability attributes).
+            {
+                return _set.Where(x => x.PersonalScopeUid == _dbContext.PersonalScopeUid && x.SubjectUid == link.SubjectUid && x.ObjectUid == link.ObjectUid).FirstOrDefault();
+            }
+
             public void PutLinks(IEnumerable<I> entities)
             {
                 foreach (var value in entities)
@@ -290,22 +314,69 @@ sealed partial class KeeperVault
             }
         }
 
+        sealed class RecordStorage<I, T>(KeeperStorage dbContext, DbSet<T> set) : IRecordStorage<I>
+            where T : class, I, IEntity<I>, new()
+        {
+            readonly KeeperStorage _dbContext = dbContext;
+            readonly DbSet<T> _set = set;
+
+            void IRecordStorage<I>.Delete()
+            {
+                var remove = _set.ToList();
+                _set.RemoveRange(remove);
+                _dbContext.SaveChanges();
+            }
+
+            I IRecordStorage<I>.Load()
+            {
+                return _set.SingleOrDefault()!;
+            }
+
+            void IRecordStorage<I>.Store(I record)
+            {
+                if (_set.Find(_dbContext.PersonalScopeUid) is T entity)
+                    entity.CopyFrom(record);
+                else
+                {
+                    entity = new();
+                    entity.CopyFrom(record);
+                    entity.PersonalScopeUid = _dbContext.PersonalScopeUid;
+                    _set.Add(entity);
+                }
+            }
+        }
+
         sealed class RecordEntity : IStorageRecord, IEntity<IStorageRecord>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public long Revision { get; private set; }
-            public int Version { get; private set; }
-            public long ClientModifiedTime { get; private set; }
-            public string? Data { get; set; }
-            public string? Extra { get; private set; }
-            public string? Udata { get; private set; }
-            public bool Shared { get; private set; }
-            public bool Owner { get; set; }
-            public string Uid { get; private set; } = null!;
+            public string Uid { get; private set; } = default!;
             string IStorageRecord.RecordUid => Uid;
 
-            public void CopyFrom(IStorageRecord other)
+            public long Revision { get; private set; }
+            long IStorageRecord.Revision => Revision;
+
+            public int Version { get; private set; }
+            int IStorageRecord.Version => Version;
+
+            public long ClientModifiedTime { get; private set; }
+            long IStorageRecord.ClientModifiedTime => ClientModifiedTime;
+
+            public string? Data { get; private set; }
+            string IStorageRecord.Data => Data!;
+
+            public string? Extra { get; private set; }
+            string IStorageRecord.Extra => Extra!;
+
+            public string? Udata { get; private set; }
+            string IStorageRecord.Udata => Udata!;
+
+            public bool Shared { get; private set; }
+            bool IStorageRecord.Shared { get => Shared; set => Shared = value; }
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageRecord>.CopyFrom(IStorageRecord other)
             {
+                Uid = other.Uid;
                 Revision = other.Revision;
                 Version = other.Version;
                 ClientModifiedTime = other.ClientModifiedTime;
@@ -313,91 +384,154 @@ sealed partial class KeeperVault
                 Extra = other.Extra;
                 Udata = other.Udata;
                 Shared = other.Shared;
-                Owner = other.Owner;
-                Uid = other.Uid;
             }
         }
 
-        sealed class SharedFolderEntity : ISharedFolder, IEntity<ISharedFolder>
+        sealed class SharedFolderEntity : IStorageSharedFolder, IEntity<IStorageSharedFolder>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public long Revision { get; private set; }
-            public string? Name { get; private set; }
-            public bool DefaultManageRecords { get; private set; }
-            public bool DefaultManageUsers { get; private set; }
-            public bool DefaultCanEdit { get; private set; }
-            public bool DefaultCanShare { get; private set; }
-            public string Uid { get; private set; } = null!;
-            string ISharedFolder.SharedFolderUid => Uid;
+            public string Uid { get; private set; } = default!;
+            string IStorageSharedFolder.SharedFolderUid => Uid;
 
-            public void CopyFrom(ISharedFolder other)
+            public long Revision { get; private set; }
+            long IStorageSharedFolder.Revision => Revision;
+
+            public string? Name { get; private set; }
+            string IStorageSharedFolder.Name => Name!;
+
+            public string? Data { get; private set; }
+            string IStorageSharedFolder.Data => Data!;
+
+            public bool DefaultManageRecords { get; private set; }
+            bool IStorageSharedFolder.DefaultManageRecords => DefaultManageRecords;
+
+            public bool DefaultManageUsers { get; private set; }
+            bool IStorageSharedFolder.DefaultManageUsers => DefaultManageUsers;
+
+            public bool DefaultCanEdit { get; private set; }
+            bool IStorageSharedFolder.DefaultCanEdit => DefaultCanEdit;
+
+            public bool DefaultCanShare { get; private set; }
+            bool IStorageSharedFolder.DefaultCanShare => DefaultCanShare;
+
+            public string? OwnerAccountUid { get; private set; }
+            string IStorageSharedFolder.OwnerAccountUid => OwnerAccountUid!;
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageSharedFolder>.CopyFrom(IStorageSharedFolder other)
             {
+                Uid = other.Uid;
                 Revision = other.Revision;
                 Name = other.Name;
                 DefaultManageRecords = other.DefaultManageRecords;
                 DefaultManageUsers = other.DefaultManageUsers;
                 DefaultCanEdit = other.DefaultCanEdit;
                 DefaultCanShare = other.DefaultCanShare;
-                Uid = other.Uid;
+                Data = other.Data;
+                OwnerAccountUid = other.OwnerAccountUid;
             }
         }
 
-        sealed class EnterpriseTeamEntity : IEnterpriseTeam, IEntity<IEnterpriseTeam>
+        sealed class EnterpriseTeamEntity : IStorageTeam, IEntity<IStorageTeam>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public string? Name { get; private set; }
-            public string? TeamKey { get; private set; }
-            public int KeyType { get; private set; }
-            public string? TeamPrivateKey { get; private set; }
-            public bool RestrictEdit { get; private set; }
-            public bool RestrictShare { get; private set; }
-            public bool RestrictView { get; private set; }
-            public string Uid { get; private set; } = null!;
-            string IEnterpriseTeam.TeamUid => Uid;
+            public string Uid { get; private set; } = default!;
+            string IStorageTeam.TeamUid => Uid;
 
-            public void CopyFrom(IEnterpriseTeam other)
+            public string? Name { get; private set; }
+            string IStorageTeam.Name => Name!;
+
+            public string? TeamKey { get; private set; }
+            string IStorageTeam.TeamKey => TeamKey!;
+
+            public int KeyType { get; private set; }
+            int IStorageTeam.KeyType => KeyType;
+
+            public string? TeamRsaPrivateKey { get; private set; }
+            string IStorageTeam.TeamRsaPrivateKey => TeamRsaPrivateKey!;
+
+            public string? TeamEcPrivateKey { get; private set; }
+            string IStorageTeam.TeamEcPrivateKey => TeamEcPrivateKey!;
+
+            public bool RestrictEdit { get; private set; }
+            bool IStorageTeam.RestrictEdit => RestrictEdit;
+
+            public bool RestrictShare { get; private set; }
+            bool IStorageTeam.RestrictShare => RestrictShare;
+
+            public bool RestrictView { get; private set; }
+            bool IStorageTeam.RestrictView => RestrictView;
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageTeam>.CopyFrom(IStorageTeam other)
             {
+                Uid = other.Uid;
                 Name = other.Name;
                 TeamKey = other.TeamKey;
                 KeyType = other.KeyType;
-                TeamPrivateKey = other.TeamPrivateKey;
+                TeamRsaPrivateKey = other.TeamRsaPrivateKey;
+                TeamEcPrivateKey = other.TeamEcPrivateKey;
                 RestrictEdit = other.RestrictEdit;
                 RestrictShare = other.RestrictShare;
                 RestrictView = other.RestrictView;
-                Uid = other.Uid;
             }
         }
 
-        sealed class NonSharedDataEntity : INonSharedData, IEntity<INonSharedData>
+        sealed class NonSharedDataEntity : IStorageNonSharedData, IEntity<IStorageNonSharedData>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public string? Data { get; set; }
-            public string Uid { get; private set; } = null!;
-            string INonSharedData.RecordUid => Uid;
+            public string Uid { get; private set; } = default!;
+            string IStorageNonSharedData.RecordUid => Uid;
 
-            public void CopyFrom(INonSharedData other)
+            public string? Data { get; private set; }
+            string IStorageNonSharedData.Data { get => Data!; set => Data = value; }
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageNonSharedData>.CopyFrom(IStorageNonSharedData other)
             {
-                Data = other.Data;
                 Uid = other.Uid;
+                Data = other.Data;
             }
         }
 
-        sealed class RecordMetadataEntity : IRecordMetadata, IEntity<IRecordMetadata>
+        sealed class RecordMetadataEntity : IStorageRecordKey, IEntity<IStorageRecordKey>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public string? RecordKey { get; private set; }
-            public int RecordKeyType { get; private set; }
-            public bool CanShare { get; set; }
-            public bool CanEdit { get; set; }
-            public string SubjectUid { get; private set; } = null!;
-            public string ObjectUid { get; private set; } = null!;
-            string IRecordMetadata.RecordUid => SubjectUid;
-            string IRecordMetadata.SharedFolderUid => ObjectUid;
+            public string SubjectUid { get; private set; } = default!;
+            string IStorageRecordKey.RecordUid => SubjectUid;
 
-            public void CopyFrom(IRecordMetadata other)
+            public string ObjectUid { get; private set; } = default!;
+            string IStorageRecordKey.SharedFolderUid => ObjectUid;
+
+            public string? RecordKey { get; private set; }
+            string IStorageRecordKey.RecordKey => RecordKey!;
+
+            public int RecordKeyType { get; private set; }
+            int IStorageRecordKey.RecordKeyType => RecordKeyType;
+
+            public bool CanShare { get; private set; }
+            bool IStorageRecordKey.CanShare => CanShare;
+
+            public bool CanEdit { get; private set; }
+            bool IStorageRecordKey.CanEdit => CanEdit;
+
+            public bool Owner { get; private set; }
+            bool IStorageRecordKey.Owner => Owner;
+
+            public string? OwnerAccountUid { get; private set; }
+            string IStorageRecordKey.OwnerAccountUid => OwnerAccountUid!;
+
+            public long Expiration { get; private set; }
+            long IStorageRecordKey.Expiration => Expiration;
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageRecordKey>.CopyFrom(IStorageRecordKey other)
             {
                 RecordKey = other.RecordKey;
                 RecordKeyType = other.RecordKeyType;
+                Owner = other.Owner;
+                OwnerAccountUid = other.OwnerAccountUid;
+                Expiration = other.Expiration;
                 CanShare = other.CanShare;
                 CanEdit = other.CanEdit;
                 SubjectUid = other.SubjectUid;
@@ -405,17 +539,23 @@ sealed partial class KeeperVault
             }
         }
 
-        sealed class SharedFolderKeyEntity : ISharedFolderKey, IEntity<ISharedFolderKey>
+        sealed class SharedFolderKeyEntity : IStorageSharedFolderKey, IEntity<IStorageSharedFolderKey>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public int KeyType { get; private set; }
-            public string? SharedFolderKey { get; private set; }
-            public string SubjectUid { get; private set; } = null!;
-            public string ObjectUid { get; private set; } = null!;
-            string ISharedFolderKey.SharedFolderUid => SubjectUid!;
-            string ISharedFolderKey.TeamUid => ObjectUid!;
+            public string SubjectUid { get; private set; } = default!;
+            string IStorageSharedFolderKey.SharedFolderUid => SubjectUid!;
 
-            public void CopyFrom(ISharedFolderKey other)
+            public string ObjectUid { get; private set; } = default!;
+            string IStorageSharedFolderKey.TeamUid => ObjectUid;
+
+            public int KeyType { get; private set; }
+            int IStorageSharedFolderKey.KeyType => KeyType;
+
+            public string? SharedFolderKey { get; private set; }
+            string IStorageSharedFolderKey.SharedFolderKey => SharedFolderKey!;
+
+            public string PersonalScopeUid { get; set; } = null!;
+
+            void IEntity<IStorageSharedFolderKey>.CopyFrom(IStorageSharedFolderKey other)
             {
                 KeyType = other.KeyType;
                 SharedFolderKey = other.SharedFolderKey;
@@ -426,83 +566,154 @@ sealed partial class KeeperVault
 
         sealed class SharedFolderPermissionEntity : ISharedFolderPermission, IEntity<ISharedFolderPermission>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public int UserType { get; private set; }
-            public bool ManageRecords { get; private set; }
-            public bool ManageUsers { get; private set; }
-            public string SubjectUid { get; private set; } = null!;
-            public string ObjectUid { get; private set; } = null!;
+            public string SubjectUid { get; private set; } = default!;
             string ISharedFolderPermission.SharedFolderUid => SubjectUid;
+
+            public string ObjectUid { get; private set; } = default!;
             string ISharedFolderPermission.UserId => ObjectUid;
 
-            public void CopyFrom(ISharedFolderPermission other)
+            public int UserType { get; private set; }
+            int ISharedFolderPermission.UserType => UserType;
+
+            public bool ManageRecords { get; private set; }
+            bool ISharedFolderPermission.ManageRecords => ManageRecords;
+
+            public bool ManageUsers { get; private set; }
+            bool ISharedFolderPermission.ManageUsers => ManageUsers;
+
+            public long Expiration { get; private set; }
+            long ISharedFolderPermission.Expiration => Expiration;
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<ISharedFolderPermission>.CopyFrom(ISharedFolderPermission other)
             {
                 UserType = other.UserType;
                 ManageRecords = other.ManageRecords;
                 ManageUsers = other.ManageUsers;
+                Expiration = other.Expiration;
                 SubjectUid = other.SubjectUid;
                 ObjectUid = other.ObjectUid;
             }
         }
 
-        sealed class FolderEntity : IFolder, IEntity<IFolder>
+        sealed class FolderEntity : IStorageFolder, IEntity<IStorageFolder>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public string? ParentUid { get; private set; }
-            public string? FolderType { get; private set; }
-            public string? FolderKey { get; private set; }
-            public string? SharedFolderUid { get; private set; }
-            public long Revision { get; private set; }
-            public string? Data { get; private set; }
-            public string Uid { get; private set; } = null!;
-            string IFolder.FolderUid => Uid!;
+            public string Uid { get; private set; } = default!;
+            string IStorageFolder.FolderUid => Uid;
 
-            public void CopyFrom(IFolder other)
+            public string? ParentUid { get; private set; }
+            string IStorageFolder.ParentUid => ParentUid!;
+
+            public string? FolderType { get; private set; }
+            string IStorageFolder.FolderType => FolderType!;
+
+            public string? FolderKey { get; private set; }
+            string IStorageFolder.FolderKey => FolderKey!;
+
+            public string? SharedFolderUid { get; private set; }
+            string IStorageFolder.SharedFolderUid => SharedFolderUid!;
+
+            public long Revision { get; private set; }
+            long IStorageFolder.Revision => Revision;
+
+            public string? Data { get; private set; }
+            string IStorageFolder.Data => Data!;
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageFolder>.CopyFrom(IStorageFolder other)
             {
+                Uid = other.Uid;
                 ParentUid = other.ParentUid;
                 FolderType = other.FolderType;
                 FolderKey = other.FolderKey;
                 SharedFolderUid = other.SharedFolderUid;
                 Revision = other.Revision;
                 Data = other.Data;
-                Uid = other.Uid;
             }
         }
 
-        sealed class FolderRecordLinkEntity : IFolderRecordLink, IEntity<IFolderRecordLink>
+        sealed class FolderRecordLinkEntity : IStorageFolderRecord, IEntity<IStorageFolderRecord>
         {
-            public string PersonalScopeUid { get; set; } = null!;
-            public string SubjectUid { get; private set; } = null!;
-            public string ObjectUid { get; private set; } = null!;
-            string IFolderRecordLink.FolderUid => SubjectUid;
-            string IFolderRecordLink.RecordUid => ObjectUid;
+            public string SubjectUid { get; private set; } = default!;
+            string IStorageFolderRecord.FolderUid => SubjectUid;
 
-            public void CopyFrom(IFolderRecordLink other)
+            public string ObjectUid { get; private set; } = default!;
+            string IStorageFolderRecord.RecordUid => ObjectUid;
+
+            public string PersonalScopeUid { get; set; } = default!;
+
+            void IEntity<IStorageFolderRecord>.CopyFrom(IStorageFolderRecord other)
             {
                 SubjectUid = other.SubjectUid;
                 ObjectUid = other.ObjectUid;
             }
         }
 
-        sealed class RecordTypeEntity : IRecordType, IEntity<IRecordType>
+        sealed class RecordTypeEntity : IStorageRecordType, IEntity<IStorageRecordType>
         {
-            public string PersonalScopeUid { get; set; } = null!;
+            public string Uid { get; private set; } = default!;
 
-            public int Id { get; private set; }
+            public string? Name { get; private set; }
+            string IStorageRecordType.Name => Name!;
 
-            public RecordTypeScope Scope { get; private set; }
+            public int RecordTypeId { get; private set; }
+            int IStorageRecordType.RecordTypeId => RecordTypeId;
+
+            public int Scope { get; private set; }
+            int IStorageRecordType.Scope => Scope;
 
             public string? Content { get; private set; }
+            string IStorageRecordType.Content => Content!;
 
-            public string Uid { get; private set; } = null!;
+            public string PersonalScopeUid { get; set; } = default!;
 
-            public void CopyFrom(IRecordType other)
+            void IEntity<IStorageRecordType>.CopyFrom(IStorageRecordType other)
             {
-                Id = other.Id;
+                RecordTypeId = other.RecordTypeId;
                 Scope = other.Scope;
                 Content = other.Content;
+                Name = other.Name;
                 Uid = other.Uid;
             }
         }
+
+        sealed class VaultSettingsEntity : IVaultSettings, IEntity<IVaultSettings>
+        {
+            public byte[] SyncDownToken { get; private set; } = default!;
+            byte[] IVaultSettings.SyncDownToken => SyncDownToken;
+
+            public string PersonalScopeUid { get; private set; } = default!;
+            string IEntity.PersonalScopeUid { get => PersonalScopeUid; set => PersonalScopeUid = value; }
+
+            void IEntity<IVaultSettings>.CopyFrom(IVaultSettings other)
+            {
+                SyncDownToken = other.SyncDownToken;
+            }
+        }
+
+        sealed class StorageUserEmailEntity : IStorageUserEmail, IEntity<IStorageUserEmail>
+        {
+            public string SubjectUid { get; private set; } = default!;
+            public string ObjectUid { get; private set; } = default!;
+            public string PersonalScopeUid { get; set; } = default!;
+            string IStorageUserEmail.Email => SubjectUid;
+            string IStorageUserEmail.AccountUid => ObjectUid;
+
+            void IEntity<IStorageUserEmail>.CopyFrom(IStorageUserEmail other)
+            {
+                SubjectUid = other.SubjectUid;
+                ObjectUid = other.ObjectUid;
+            }
+        }
     }
+
+#if DEBUG
+    sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<KeeperStorage>
+    {
+        public KeeperStorage CreateDbContext(string[] args)
+            => new(null, "");
+    }
+#endif
 }
