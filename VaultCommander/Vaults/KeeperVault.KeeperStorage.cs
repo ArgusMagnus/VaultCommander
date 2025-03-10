@@ -437,8 +437,8 @@ sealed partial class KeeperVault
             public string Uid { get; private set; } = default!;
             string IStorageTeam.TeamUid => Uid;
 
-            public string? Name { get; private set; } = default!;
-            string IStorageTeam.Name => Name;
+            public string? Name { get; private set; }
+            string IStorageTeam.Name => Name!;
 
             public string? TeamKey { get; private set; }
             string IStorageTeam.TeamKey => TeamKey!;
