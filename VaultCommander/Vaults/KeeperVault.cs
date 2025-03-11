@@ -100,7 +100,8 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     public async Task<StatusDto?> Login()
     {
         var storage = _auth.Storage.Get();
-        var (user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, storage.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
+        var server = string.IsNullOrEmpty(storage.LastServer) ? storage.Servers.List.FirstOrDefault()?.Server ?? "" : storage.LastServer;
+        (server, var user, _) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, server, storage.LastLogin, emailOnly: true)).Task.ConfigureAwait(false);
         if (!string.IsNullOrEmpty(user))
         {
             using (var progressBox = await ProgressBox.Show())
@@ -109,6 +110,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                 _auth.UiCallback = uiCallback;
                 progressBox.DetailText = "Anmelden...";
                 progressBox.DetailProgress = double.NaN;
+                _auth.Endpoint.Server = server;
                 await _auth.Login(user, []);
                 await uiCallback.Wait();
                 _storage.PersonalScopeUid = _auth.Username;
@@ -267,7 +269,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                         foreach (var channel in twoFactorStep.Channels.Where(twoFactorStep.IsCodeChannel))
                         {
                             var phoneNumber = twoFactorStep.GetPhoneNumber(channel);
-                            var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, string.Join(' ', channel, phoneNumber))).Task;
+                            var (_, _, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, "", string.Join(' ', channel, phoneNumber))).Task;
                             if (pw is null)
                                 continue;
 
@@ -280,7 +282,7 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
                 case PasswordStep passwordStep:
                     {
-                        var (_, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Username)).Task.ConfigureAwait(false);
+                        var (_, _, pw) = await Application.Current.Dispatcher.InvokeAsync(() => PasswordDialog.Show(Application.Current.MainWindow, _auth.Storage.Get().LastServer, _auth.Username)).Task.ConfigureAwait(false);
                         if (pw is not null)
                             await passwordStep.VerifyPassword(pw.GetAsClearText());
                     }
@@ -320,10 +322,15 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
                                     window.ShowDialog();
                             }
                         }).Task.ConfigureAwait(false);
-
                         var token = await tcs.Task;
                         if (!string.IsNullOrEmpty(token))
                             await ssoTokenStep.SetSsoToken(token);
+                        else
+                        {
+                            _auth.Cancel();
+                            _tcs.TrySetResult();
+                            _cts.Cancel();
+                        }
                     }
                     break;
 

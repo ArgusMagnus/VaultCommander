@@ -1,16 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 
 namespace VaultCommander;
 
@@ -26,20 +15,27 @@ sealed partial class PasswordDialog : Window
 
     private void OnButtonOK(object sender, RoutedEventArgs e) => DialogResult = true;
 
-    public static (string? UserEmail, EncryptedString? Password) Show(Window owner, string? userEmail, bool emailOnly = false)
+    public static (string? Server, string? UserEmail, EncryptedString? Password) Show(Window owner, string? server, string? userEmail, bool emailOnly = false)
     {
         PasswordDialog dlg = new() { Owner = owner };
+        dlg._serverBox.Text = server;
         if (!string.IsNullOrEmpty(userEmail))
         {
             dlg._emailBox.Text = userEmail;
             dlg._emailBox.IsReadOnly = true;
+            dlg._serverBox.IsReadOnly = true;
+            if (!emailOnly)
+            {
+                dlg._serverLabel.Visibility = Visibility.Collapsed;
+                dlg._serverBox.Visibility = Visibility.Collapsed;
+            }
         }
         if (emailOnly)
         {
             dlg._passwordLabel.Visibility = Visibility.Collapsed;
             dlg._passwordBox.Visibility = Visibility.Collapsed;
         }
-        return dlg.ShowDialog() is true ? (dlg._emailBox.Text, new(dlg._passwordBox.Password)) : default;
+        return dlg.ShowDialog() is true ? (dlg._serverBox.Text, dlg._emailBox.Text, new(dlg._passwordBox.Password)) : default;
     }
 
     private void OnUseSsoChanged(object sender, RoutedEventArgs e)

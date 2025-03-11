@@ -79,7 +79,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
 
         while (true)
         {
-            var cred = PasswordDialog.Show(Application.Current.MainWindow, null);
+            var cred = PasswordDialog.Show(Application.Current.MainWindow, null, null);
             if (cred == default)
                 break;
             if (string.IsNullOrEmpty(cred.UserEmail) || cred.Password is null)
@@ -182,7 +182,7 @@ sealed partial class BitwardenVault : IVault, IAsyncDisposable
                 _savedPw = null;
                 while (_savedPw is null || !await api.Unlock(_savedPw))
                 {
-                    _savedPw = PasswordDialog.Show(Application.Current.MainWindow, status.UserEmail).Password;
+                    _savedPw = PasswordDialog.Show(Application.Current.MainWindow, status.ServerUrl, status.UserEmail).Password;
                 }
             }
             result = await func(api);
