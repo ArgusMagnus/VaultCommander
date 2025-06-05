@@ -10,8 +10,8 @@ using VaultCommander.Vaults;
 namespace VaultCommander.Migrations
 {
     [DbContext(typeof(KeeperVault.KeeperStorage))]
-    [Migration("20250310143909_KeeperSdk110")]
-    partial class KeeperSdk110
+    [Migration("20250605140924_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

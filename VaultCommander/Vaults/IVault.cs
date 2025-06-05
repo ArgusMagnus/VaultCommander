@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace VaultCommander.Vaults;
@@ -11,10 +9,9 @@ interface IVaultFactory
 {
     public IVault CreateVault(string dataDirectoryRoot);
 
-    public static IReadOnlyList<IVault> CreateVaults(string dataDirectoryRoot) => typeof(IVaultFactory).Assembly.DefinedTypes
+    public static IReadOnlyList<IVault> CreateVaults(string dataDirectoryRoot) => [.. typeof(IVaultFactory).Assembly.DefinedTypes
         .Where(x => !x.IsInterface && !x.IsAbstract && x.ImplementedInterfaces.Contains(typeof(IVaultFactory)))
-        .Select(x => ((IVaultFactory)Activator.CreateInstance(x)!).CreateVault(dataDirectoryRoot))
-        .ToList();
+        .Select(x => ((IVaultFactory)Activator.CreateInstance(x)!).CreateVault(dataDirectoryRoot))];
 }
 
 interface IVault

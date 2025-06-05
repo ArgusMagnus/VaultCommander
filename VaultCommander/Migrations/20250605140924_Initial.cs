@@ -5,44 +5,11 @@
 namespace VaultCommander.Migrations
 {
     /// <inheritdoc />
-    public partial class KeeperSdk110 : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "folderRecords");
-
-            migrationBuilder.DropTable(
-                name: "folders");
-
-            migrationBuilder.DropTable(
-                name: "nonSharedData");
-
-            migrationBuilder.DropTable(
-                name: "recordKeys");
-
-            migrationBuilder.DropTable(
-                name: "records");
-
-            migrationBuilder.DropTable(
-                name: "recordTypes");
-
-            migrationBuilder.DropTable(
-                name: "sharedFolderKeys");
-
-            migrationBuilder.DropTable(
-                name: "sharedFolderPermissions");
-
-            migrationBuilder.DropTable(
-                name: "sharedFolders");
-
-            migrationBuilder.DropTable(
-                name: "teams");
-
-            migrationBuilder.DropTable(
-                name: "userStorage");
-
             migrationBuilder.CreateTable(
                 name: "folderRecords",
                 columns: table => new

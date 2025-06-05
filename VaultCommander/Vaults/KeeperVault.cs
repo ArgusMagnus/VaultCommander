@@ -1,26 +1,23 @@
-﻿using Enterprise;
-using KeeperSecurity.Authentication;
+﻿using KeeperSecurity.Authentication;
 using KeeperSecurity.Authentication.Sync;
 using KeeperSecurity.Configuration;
 using KeeperSecurity.Utils;
 using KeeperSecurity.Vault;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows;
 using VaultCommander.Commands;
-using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace VaultCommander.Vaults;
 
@@ -92,8 +89,12 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
 
     public async Task<StatusDto?> Initialize()
     {
-        //await _storage.Database.EnsureCreatedAsync().ConfigureAwait(false);
-        await _storage.Database.MigrateAsync().ConfigureAwait(false);
+        try { await _storage.Database.MigrateAsync().ConfigureAwait(false); }
+        catch (SqliteException)
+        {
+            await _storage.Database.EnsureDeletedAsync();
+            await _storage.Database.MigrateAsync();
+        }
         return await GetStatus();
     }
 
