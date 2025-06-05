@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -37,10 +38,28 @@ sealed class CiscoAnyConnectCommand : Command<CiscoAnyConnectCommand.Arguments>
 
     public CiscoAnyConnectCommand()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Cisco\Cisco AnyConnect Secure Mobility Client");
+        string? dir = null;
+        using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Cisco\Cisco Secure Client"))
+        {
+            dir = (string?)key?.GetValue("InstallPathWithSlash");
+            if (dir is not null)
+            {
+                using var subKey = key!.OpenSubKey("UI")!;
+                _vpnui = (string)subKey.GetValue("ExePath")!;
+                _config = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Cisco\Cisco Secure Client\VPN\preferences.xml");
+            }
+        }
+
+        if (dir is null)
+        {
+            using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Cisco\Cisco AnyConnect Secure Mobility Client"))
+                dir = (string?)key?.GetValue("InstallPathWithSlash");
+        }
+
+        dir ??= "";
         _vpncli = Path.Combine(dir, "vpncli.exe");
-        _vpnui = Path.Combine(dir, "vpnui.exe");
-        _config = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Cisco\Cisco AnyConnect Secure Mobility Client\preferences.xml");
+        _vpnui ??= Path.Combine(dir, "vpnui.exe");
+        _config ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Cisco\Cisco AnyConnect Secure Mobility Client\preferences.xml");
     }
 
     public override async Task Execute(Arguments args)
