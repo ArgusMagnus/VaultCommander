@@ -41,7 +41,7 @@ sealed class FortiClientCommand : Command<FortiClientCommand.Arguments>
         WindowHandle windowHandle = new(process.MainWindowHandle);
         windowHandle.Focus();
         var maxEmailAge = DateTimeOffset.Now;
-        Utils.SendKeys($"{{TAB}}{{TAB}}{args.Username}{{TAB}}{args.Password}{{ENTER}}");
+        Utils.SendKeys($"{{TAB}}{{TAB}}{{TAB}}{args.Username}{{TAB}}{args.Password}{{ENTER}}");
 
         var totp = args.Totp;
         if (args.Mail is not null)
