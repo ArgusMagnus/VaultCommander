@@ -111,19 +111,38 @@ sealed class CiscoAnyConnectCommand : Command<CiscoAnyConnectCommand.Arguments>
                     {
                         case "accept? [y/n]:":
                         case "Connect Anyway? [y/n]:":
+                        case "Trotzdem verbinden? [y/n]:":
                         case "Change the setting that blocks untrusted connections? [y/n]:":
                         case "Always trust this server and import the certificate? [y/n]:":
-                            await process.StandardInput.WriteLineAsync("y"); break;
+                            await process.StandardInput.WriteLineAsync("y");
+                            break;
+
                         case "Group:":
                             if (group is -1)
                                 throw new ArgumentException($"Gruppe '{args.Group}' ist ungültig", nameof(args.Group));
                             await process.StandardInput.WriteLineAsync($"{group}");
                             break;
-                        case "Username:": await process.StandardInput.WriteLineAsync(args.Username); break;
-                        case "Password:": await process.StandardInput.WriteLineAsync(args.Password); break;
-                        case "AnyConnect cannot verify server:": writeNewLine = false; break;
+
+                        case "Username:":
+                        case "Benutzername:":
+                            await process.StandardInput.WriteLineAsync(args.Username);
+                            break;
+
+                        case "Password:":
+                        case "Kennwort:":
+                            await process.StandardInput.WriteLineAsync(args.Password);
+                            break;
+
+                        case "AnyConnect cannot verify server:":
+                        case "Cisco Secure Client cannot verify server:":
+                        case "Cisco Secure Client kann den Server nicht verifizieren:":
+                            writeNewLine = false;
+                            break;
+
                         case "Answer:":
-                        case "Second Password":
+                        case "Antwort:":
+                        case "Second Password:":
+                        case "Zweites Kennwort:":
                             if (!string.IsNullOrEmpty(args.Totp))
                                 await process.StandardInput.WriteLineAsync(args.Totp);
                             else if (args.Mail is not null)
