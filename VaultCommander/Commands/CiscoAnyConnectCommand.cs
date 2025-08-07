@@ -118,6 +118,7 @@ sealed class CiscoAnyConnectCommand : Command<CiscoAnyConnectCommand.Arguments>
                             break;
 
                         case "Group:":
+                        case "Gruppe:":
                             if (group is -1)
                                 throw new ArgumentException($"Gruppe '{args.Group}' ist ungültig", nameof(args.Group));
                             await process.StandardInput.WriteLineAsync($"{group}");
