@@ -180,8 +180,8 @@ sealed partial class KeeperVault : IVault, IAsyncDisposable
     static Record ToRecord(KeeperRecord record, bool includeTotp = false)
     {
         if (record is not TypedRecord data)
-            return new(record.Uid, record.Title, Array.Empty<RecordField>());
-        return new(record.Uid, record.Title, TransformFields(data.Fields.Concat(data.Custom), includeTotp).ToList());
+            return new(record.Uid, record.Title, []);
+        return new(record.Uid, record.Title, [.. TransformFields(data.Fields.Concat(data.Custom), includeTotp)]);
 
         static IEnumerable<RecordField> TransformFields(IEnumerable<ITypedField> fields, bool includeTotp)
         {

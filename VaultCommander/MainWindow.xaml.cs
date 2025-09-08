@@ -382,6 +382,8 @@ sealed partial class MainWindow : Window
                 var field = item.Fields.FirstOrDefault(x => string.Equals(name, x.Name, StringComparison.OrdinalIgnoreCase));
                 if (field is not null)
                     return regex.Replace(field.Value ?? "", EvaluateMatch);
+                if (string.Equals(name, "Name", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "Title", StringComparison.OrdinalIgnoreCase))
+                    return regex.Replace(item.Name ?? "", EvaluateMatch);
                 return match.Value;
             };
             await ReplacePlaceholders(argsNode, null, null, tag.Vault, tag.ItemId, records, regex, EvaluateMatch);
