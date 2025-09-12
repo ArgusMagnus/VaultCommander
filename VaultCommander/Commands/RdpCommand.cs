@@ -70,7 +70,7 @@ sealed class RdpCommand : Command<RdpCommand.Arguments>
         HashSet<WindowHandle> loginWindows = new();
         WindowHandle.EnumWindows(window =>
         {
-            if (window.TryGetThreadAndProcessId(out _, out var processId) && Process.GetProcessById(processId).ProcessName is "CredentialUIBroker")
+            if (window.TryGetThreadAndProcessId(out _, out var processId) && Utils.GetProcessById(processId) is { ProcessName: "CredentialUIBroker" })
                 loginWindows.Add(window);
             return true;
         });
@@ -90,7 +90,7 @@ sealed class RdpCommand : Command<RdpCommand.Arguments>
                     Process? loginProcess = null;
                     WindowHandle.EnumWindows(window =>
                     {
-                        if (loginWindows.Contains(window) || !window.TryGetThreadAndProcessId(out _, out var processId) || Process.GetProcessById(processId) is not { ProcessName: "CredentialUIBroker" } p)
+                        if (loginWindows.Contains(window) || !window.TryGetThreadAndProcessId(out _, out var processId) || Utils.GetProcessById(processId) is not { ProcessName: "CredentialUIBroker" } p)
                             return true;
                         loginWindow = window;
                         loginProcess = p;

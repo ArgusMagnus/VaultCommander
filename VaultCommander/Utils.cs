@@ -19,6 +19,7 @@ using System.Net.Http.Json;
 using System.Linq.Expressions;
 using KeeperSecurity.Utils;
 using WinForms = System.Windows.Forms;
+using System.Diagnostics.CodeAnalysis;
 
 namespace VaultCommander;
 
@@ -197,5 +198,11 @@ static class Utils
         }
         var keys = string.Format(formattableString.Format, args);
         SendKeysLiteral(keys);
+    }
+
+    public static Process? GetProcessById(int processId)
+    {
+        try { return Process.GetProcessById(processId); }
+        catch (ArgumentException) { return null; }
     }
 }
