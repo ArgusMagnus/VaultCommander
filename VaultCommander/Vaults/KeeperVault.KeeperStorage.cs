@@ -85,6 +85,9 @@ sealed partial class KeeperVault
         private DbSet<StorageUserEmailEntity> userEmails { get; init; } = null!;
         public ILinkStorage<IStorageUserEmail> UserEmails { get; }
 
+        private DbSet<BreachWatchRecordEntity> breachWatchRecords { get; init; } = null!;
+        public IEntityStorage<IStorageBreachWatchRecord> BreachWatchRecords { get; }
+
         readonly string _dbFilename;
 
         public KeeperStorage(string? personalScopeUid, string dbFilename)
@@ -103,6 +106,7 @@ sealed partial class KeeperVault
             RecordTypes = new EntityStorage<IStorageRecordType, RecordTypeEntity>(this, recordTypes);
             VaultSettings = new RecordStorage<IVaultSettings, VaultSettingsEntity>(this, vaultSettings);
             UserEmails = new PredicateStorage<IStorageUserEmail, StorageUserEmailEntity>(this, userEmails);
+            BreachWatchRecords = new EntityStorage<IStorageBreachWatchRecord, BreachWatchRecordEntity>(this, breachWatchRecords);
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -145,6 +149,7 @@ sealed partial class KeeperVault
             ConfigureEntityUid<IStorageRecordType, RecordTypeEntity>(modelBuilder);
             ConfigureEntity<IVaultSettings, VaultSettingsEntity>(modelBuilder).HasKey(x => x.PersonalScopeUid);
             ConfigureEntityUidLink<IStorageUserEmail, StorageUserEmailEntity>(modelBuilder);
+            ConfigureEntityUid<IStorageBreachWatchRecord, BreachWatchRecordEntity>(modelBuilder);
             modelBuilder.Entity<UserStorage>().HasKey(x => x.PersonalScopeUid);
 
             static EntityTypeBuilder<T> ConfigureEntity<I, T>(ModelBuilder modelBuilder) where T : class, I, IEntity<I>
@@ -705,6 +710,30 @@ sealed partial class KeeperVault
             {
                 SubjectUid = other.SubjectUid;
                 ObjectUid = other.ObjectUid;
+            }
+        }
+
+        sealed class BreachWatchRecordEntity : IStorageBreachWatchRecord, IEntity<IStorageBreachWatchRecord>
+        {
+
+            public string RecordUid { get; private set; } = default!;
+
+            public long Revision { get; private set; } = default!;
+
+            public int Type { get; private set; } = default!;
+
+            public string Data { get; private set; } = default!;
+
+            public string Uid { get; private set; } = default!;
+            public string PersonalScopeUid { get; set; } = default!;
+
+            public void CopyFrom(IStorageBreachWatchRecord other)
+            {
+                RecordUid = other.RecordUid;
+                Revision = other.Revision;
+                Type = other.Type;
+                Data = other.Data;
+                Uid = other.Uid;
             }
         }
     }

@@ -14,7 +14,34 @@ namespace VaultCommander.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.13");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
+
+            modelBuilder.Entity("VaultCommander.Vaults.KeeperVault+KeeperStorage+BreachWatchRecordEntity", b =>
+                {
+                    b.Property<string>("PersonalScopeUid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Uid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecordUid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("PersonalScopeUid", "Uid");
+
+                    b.ToTable("breachWatchRecords");
+                });
 
             modelBuilder.Entity("VaultCommander.Vaults.KeeperVault+KeeperStorage+EnterpriseTeamEntity", b =>
                 {

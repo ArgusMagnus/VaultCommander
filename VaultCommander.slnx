@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="VaultCommander.Terminal/VaultCommander.Terminal.csproj" />
+  <Project Path="VaultCommander/VaultCommander.csproj" />
+</Solution>
